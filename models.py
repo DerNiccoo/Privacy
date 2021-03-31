@@ -6,12 +6,15 @@ from typing import List, Optional
 class Attribute(BaseModel):
   name: str
   dtype: str
-  generator: str
+  field_distribution: Optional[str] = None
+  field_transformer: Optional[str] = None
+  field_anonymize: Optional[str] = None
   sensible: Optional[bool] = False
 
 class Table(BaseModel):
   name: str
   attributes: List[Attribute]
+  model: Optional[str] = None
 
 class Training(BaseModel):
   path: str

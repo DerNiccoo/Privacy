@@ -5,6 +5,7 @@ import pandas as pd
 import sqlite3
 from sdv import Metadata
 from models import Training, Table
+import operator
 
 from connector.baseconnector import BaseConnector
 
@@ -27,6 +28,8 @@ class SQLConnector(BaseConnector):
     '''This method returns the order of tables to be generated. Tables have relations between each other (FK) that needs to be created first in order to generate consistend data. 
     TODO: Remove pk; fk stuff from here. Method already big enough, will get own method to call when needed. 
     TODO: Vll alle Methoden so erweitern, dass die ihr Ergebnis zwischenspeichern und bei mehrfachen Aufruf einfach wiedergeben können. 
+
+    TODO: Das Framework SDV erlaubt es nur einen Primary Key bei relationalen Tabellen zu haben. Dieser MUSS der gezeigte FK Schlüssel der relationalen Tabellen sein. 
     '''
 
     LOGGER.debug('Executing get_schema')
@@ -39,6 +42,11 @@ class SQLConnector(BaseConnector):
     if "sqlite_sequence" in tables:
       tables.remove('sqlite_sequence')
     
+    pfkey_count = {}
+
+    for table in tables:
+      pfkey_count[table.lower()] = {} #init für die prim-foreign-key Count dict
+
     fk_relation = {}
     pk_relation = {}
     
@@ -52,51 +60,29 @@ class SQLConnector(BaseConnector):
       for attr in attributes:
         if attr[5] == 1:
           pk.append(attr[1])    
-      pk_relation[table] = pk
+      pk_relation[table] = pk # Default bestimmung des PK, wird infolge dessen überschrieben wenn nötig
       
       rows = con.execute("PRAGMA foreign_key_list({})".format(self._sql_identifier(table)))
       foreign_key_list = rows.fetchall()
-      fkeys = []
-      
+      fkeys = []      
+
       for fk in foreign_key_list:
         fkeys.append({'table': fk[2].lower(), 'origin': fk[3], 'dest': fk[4]})
+
+        if fk[4] in pfkey_count[fk[2].lower()]:
+          pfkey_count[fk[2].lower()][fk[4]] += 1
+        else:
+          pfkey_count[fk[2].lower()][fk[4]] = 0
       
       fk_relation[table] = fkeys
       
-      if not fkeys:
-        table_order.append(table)
-      else:
-        contained = True
-        depends = []
-        for fk in fkeys:
-          if fk['table'] not in depends:
-            depends.append(fk['table'])
-          if fk['table'] not in table_order:
-            contained = False
-        if contained:
-          #table_order.append((table, depends))
-          table_order.append(table)
-                
-    maxLoop = 5
-    while len(table_order) <= len(tables):
-      for table, fkeys in fk_relation.items():
-        if table in table_order:
-          continue
-            
-        contained = True
-        depends = []
-        for fk in fkeys:
-          if fk['table'] not in depends:
-            depends.append(fk['table'])
-          if fk['table'] not in table_order:
-            contained = False
-        if contained:
-          table_order.append(table)  
-              
-      maxLoop -= 1
-      if maxLoop <= 0:
-        LOGGER.debug('Reached max recursion count in schema creation')
-        break
+    # Updating primary Key of tables based on highest count of foreign key relations
+    for table in tables:
+      print(pfkey_count[table])
+      if len(pfkey_count[table]) > 0:
+        new_pk = max(pfkey_count[table].items(), key=operator.itemgetter(1))[0] # Getting key with highest value from dict
+        pk_relation[table] = [new_pk]
+
         
     con.close()
 
@@ -105,6 +91,7 @@ class SQLConnector(BaseConnector):
     self._fk_relation = fk_relation
 
     LOGGER.debug('Finished get_schema')
+    LOGGER.warning(self._pk_relation)
 
     return (table_order, pk_relation, fk_relation)
 
@@ -169,8 +156,7 @@ class SQLConnector(BaseConnector):
             metadata.add_relationship(
               parent=fk_rel["table"],
               child=table.name,
-              foreign_key=fk_rel["dest"],
-              parent_key=fk_rel["origin"]
+              foreign_key=fk_rel["dest"]
             )
 
           else:
@@ -182,3 +168,40 @@ class SQLConnector(BaseConnector):
 
     con.close()
     return (tables, metadata)
+
+
+"""
+      if not fkeys:
+        table_order.append(table)
+      else:
+        contained = True
+        depends = []
+        for fk in fkeys:
+          if fk['table'] not in depends:
+            depends.append(fk['table'])
+          if fk['table'] not in table_order:
+            contained = False
+        if contained:
+          #table_order.append((table, depends))
+          table_order.append(table)
+                
+    maxLoop = 5
+    while len(table_order) <= len(tables):
+      for table, fkeys in fk_relation.items():
+        if table in table_order:
+          continue
+            
+        contained = True
+        depends = []
+        for fk in fkeys:
+          if fk['table'] not in depends:
+            depends.append(fk['table'])
+          if fk['table'] not in table_order:
+            contained = False
+        if contained:
+          table_order.append(table)  
+              
+      maxLoop -= 1
+      if maxLoop <= 0:
+        LOGGER.debug('Reached max recursion count in schema creation')
+        break """

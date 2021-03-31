@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from models import Training, Table
 
 from connector import DataConnector
+from generator import Generator
 
 
 app = FastAPI()
@@ -20,6 +21,11 @@ async def get_database_schema(db_path: str):
 async def start_training(training: Training):
   dc = DataConnector.load(path=training.path)
 
-  dc.get_training_data(training)
+  tables, metadata = dc.get_training_data(training)
+  
+  gen = Generator(training, metadata)
+  gen.fit(tables)
+
+  gen.sample(100)
 
   return training
