@@ -1,5 +1,6 @@
 import logging
 from connector.sqlconnector import SQLConnector
+from connector.csvconnector import CSVConnector
 
 LOGGER = logging.getLogger(__name__)
 
@@ -20,9 +21,12 @@ class DataConnector:
 
     if len(_format) < 2:
       LOGGER.error('Unable to detect file format.')
+      raise Exception('Unable to detect file format.')
 
     if _format[-1] == 'sqlite':
       return SQLConnector(path)
-    #else:
-    #  return CSVConnector(path)
+    elif _format[-1] == 'csv':
+      return CSVConnector(path)
+    else:
+      raise Exception('Unsupported file format.')
     

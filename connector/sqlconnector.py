@@ -4,7 +4,7 @@ import os.path
 import pandas as pd
 import sqlite3
 from sdv import Metadata
-from models import Training, Table
+from models import Training, Table, Attribute, DataEvaluator
 import operator
 
 from connector.baseconnector import BaseConnector
@@ -50,8 +50,6 @@ class SQLConnector(BaseConnector):
     fk_relation = {}
     pk_relation = {}
     
-    table_order = []
-    
     for table in tables:
       rows = con.execute("PRAGMA table_info({})".format(self._sql_identifier(table)))
       attributes = rows.fetchall()
@@ -78,7 +76,6 @@ class SQLConnector(BaseConnector):
       
     # Updating primary Key of tables based on highest count of foreign key relations
     for table in tables:
-      print(pfkey_count[table])
       if len(pfkey_count[table]) > 0:
         new_pk = max(pfkey_count[table].items(), key=operator.itemgetter(1))[0] # Getting key with highest value from dict
         pk_relation[table] = [new_pk]
@@ -86,19 +83,19 @@ class SQLConnector(BaseConnector):
         
     con.close()
 
-    self._tables = table_order
+    self._tables = tables
     self._pk_relation = pk_relation
     self._fk_relation = fk_relation
 
-    LOGGER.debug('Finished get_schema')
+    LOGGER.warning('Finished get_schema')
     LOGGER.warning(self._pk_relation)
 
-    return (table_order, pk_relation, fk_relation)
+    return (tables, pk_relation, fk_relation)
 
   def _get_metadata(self):
     if self._tables is None or self._pk_relation is None or self._fk_relation is None:
       self._get_schema()
-    
+
     metadata = Metadata()
     con = sqlite3.connect(self.path)
 
@@ -111,9 +108,25 @@ class SQLConnector(BaseConnector):
         primary_key=self._pk_relation[table][0] #TODO: Könnte sein, dass es mehr prim keys gibt. Dann schauen.
       )
 
+    table_list = []
+    for table in self._tables:
+      meta_dict = metadata.get_table_meta(table)
+
+      attributes_list = []
+      for name, dtype in meta_dict['fields'].items():
+        attributes_list.append(Attribute(**{'name': name, 'dtype': str(dtype['type'])}))
+
+      table = Table(**{'name': table, 'attributes': attributes_list, 'model': 'TVAE'})
+      table_list.append(table)
+
+
     con.close()
 
-    return metadata
+    data_evaluator = DataEvaluator(**{'config': {'extras': 'none'}})
+    training = Training(**{'path': self.path, 'tables': table_list, 'evaluators': {'closeness': data_evaluator}})
+
+
+    return training
 
   def _get_selected_attributes(self, table: Table):
     """
@@ -169,39 +182,3 @@ class SQLConnector(BaseConnector):
     con.close()
     return (tables, metadata)
 
-
-"""
-      if not fkeys:
-        table_order.append(table)
-      else:
-        contained = True
-        depends = []
-        for fk in fkeys:
-          if fk['table'] not in depends:
-            depends.append(fk['table'])
-          if fk['table'] not in table_order:
-            contained = False
-        if contained:
-          #table_order.append((table, depends))
-          table_order.append(table)
-                
-    maxLoop = 5
-    while len(table_order) <= len(tables):
-      for table, fkeys in fk_relation.items():
-        if table in table_order:
-          continue
-            
-        contained = True
-        depends = []
-        for fk in fkeys:
-          if fk['table'] not in depends:
-            depends.append(fk['table'])
-          if fk['table'] not in table_order:
-            contained = False
-        if contained:
-          table_order.append(table)  
-              
-      maxLoop -= 1
-      if maxLoop <= 0:
-        LOGGER.debug('Reached max recursion count in schema creation')
-        break """

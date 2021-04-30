@@ -19,6 +19,9 @@ class BaseConnector:
     raise NotImplementedError()
 
   def get_schema(self):
+    '''
+    Returns the automatic deteced metadata of a given dataset.
+    '''
     return self._get_schema()
 
   def _get_metadata(self):

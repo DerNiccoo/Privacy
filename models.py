@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 import typing
 from typing import List, Optional
+import pandas as pd
 
 
 class Attribute(BaseModel):
@@ -16,9 +17,13 @@ class Table(BaseModel):
   attributes: List[Attribute]
   model: Optional[str] = None
 
+class DataEvaluator(BaseModel):
+  config: typing.Dict[str, str]
+
 class Training(BaseModel):
   path: str
   tables: List[Table]
+  evaluators: typing.Dict[str, DataEvaluator]
 
   train_tables : Optional[List[str]] #TODO: Ugly workarround da es einfach mit _ davor nicht geht und zuweisungen...
   train_attr : Optional[typing.Dict[str, List[str]]]
