@@ -30,6 +30,18 @@ class BaseConnector:
   def get_metadata(self):
     return self._get_metadata()
 
+  def _get_column_names(self):
+    raise NotImplementedError()
+
+  def get_column_names(self):
+    return self._get_column_names()
+
+  def _get_tables(self, replace_na: bool = True):
+    raise NotImplementedError()
+
+  def get_tables(self, replace_na: bool = True):
+    return self._get_tables(replace_na)
+
   def _get_training_data(self, training: Training):
     raise NotImplementedError()
 

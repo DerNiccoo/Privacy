@@ -38,10 +38,10 @@ class Similarity(BaseEval):
               dif.append(q1[i] - q2[i])
               
           percent = 1
-          if sum(q1) > sum(q2):
-              percent = sum(q2) / sum(q1)
-          elif sum(q1) < sum(q2):
-              percent = sum(q1) / sum(q2)
+          if abs(sum(q1)) > abs(sum(q2)):
+              percent = abs(sum(q2)) / abs(sum(q1))
+          elif abs(sum(q1)) < abs(sum(q2)):
+              percent = abs(sum(q1)) / abs(sum(q2))
               
           dif_total += sum(dif)
           entry = {
@@ -53,6 +53,7 @@ class Similarity(BaseEval):
               'percent': percent,
           }
           #res.append(entry)
+
           res.append(percent)
           
       return (res, dif_total)

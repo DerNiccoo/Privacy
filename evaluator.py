@@ -1,3 +1,6 @@
+import warnings
+warnings.simplefilter(action='ignore')
+
 from models import Training
 import pandas as pd
 import logging
@@ -14,6 +17,7 @@ class Evaluator:
 
   def __init__(self, training: Training):
     self._training = training
+    self._methods = []
 
     for method, config in training.evaluators.items():
       self._methods.append(EvalFactory.create(method, config))
@@ -41,12 +45,18 @@ class Evaluator:
     evaluation_result = []
 
     for table in self._training.tables:
-      synthetic_table = pd.read_csv(new_path + "/" + table.name + "_gen.csv")
+      if self._training.path_gen == None:        
+        synthetic_table = pd.read_csv(new_path + "/" + table.name + "_gen.csv")
+      else:
+        synthetic_table = pd.read_csv(self._training.path_gen)
 
       for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
         print(method)
+        #try:
         results = method.compute(real_tables[table.name].drop(field_anonymize[table.name], axis=1), synthetic_table.drop(field_anonymize[table.name], axis=1))
         evaluation_result.extend(results)
+        #except:
+        #  LOGGER.warning(f'Error compute eval.{method}')
 
     return evaluation_result
 

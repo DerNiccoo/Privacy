@@ -22,6 +22,7 @@ class DataEvaluator(BaseModel):
 
 class Training(BaseModel):
   path: str
+  path_gen: Optional[str]
   tables: List[Table]
   evaluators: typing.Dict[str, DataEvaluator]
 

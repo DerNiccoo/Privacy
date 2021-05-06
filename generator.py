@@ -1,3 +1,5 @@
+import warnings
+warnings.simplefilter(action='ignore')
 
 from sdv.tabular import GaussianCopula
 from sdv.tabular import CTGAN
@@ -7,6 +9,7 @@ from sdv.relational import HMA1
 from sdv import Metadata
 
 from models import Training
+from fakers import FakerFactory
 
 import pandas as pd
 import logging
@@ -17,34 +20,47 @@ LOGGER = logging.getLogger(__name__)
 class Generator:
 
   _model = None
+  _model_name = None
   _training = None
+  _anonymize = None
   _performance_mode = False
 
   def __init__(self, training: Training, metadata: Metadata):
     self._training = training
 
-    distribution, transformer, anonymize = self._get_settings()
+    distribution, transformer, anonymize, types = self._get_settings()
+    self._anonymize = anonymize
 
     if len(self._training.tables) > 1:
       LOGGER.warning(f"Using HMA1")
       self._model = HMA1(metadata)
     else:
       if training.tables[0].model == "GaussianCopula":
-        self._model = GaussianCopula(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution)
+        self._model = GaussianCopula(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
+        self._model_name = 'gc'
       elif training.tables[0].model == "CTGAN": 
-        self._model = CTGAN(anonymize_fields = anonymize, field_transformers = transformer)
+        self._model = CTGAN(anonymize_fields = anonymize, field_transformers = transformer, field_types= types)
+        self._model_name = 'ct'
       elif training.tables[0].model == "CopulaGAN": 
-        self._model = CopulaGAN(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution)
+        self._model = CopulaGAN(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
+        self._model_name = 'cg'
       elif training.tables[0].model == "TVAE": 
-        self._model = TVAE(anonymize_fields = anonymize, field_transformers = transformer)
+        self._model = TVAE(field_transformers = transformer, field_types= types)
+        self._model_name = 'tv'
 
     LOGGER.warning(f'Using Model: {self._model}')
 
   def fit(self, tables: dict):
     data = tables
 
+    columns = []
+
+    for key, value in self._anonymize.items():
+      columns.append(key)
+
     if len(tables) == 1:
       data = tables[list(tables.keys())[0]] #Da nur eine Tabelle kein dict von Tabellen übergeben
+      data.drop(columns=columns, inplace=True)
       if self._performance_mode:
         data = data.sample(n=100)
     else:
@@ -58,17 +74,32 @@ class Generator:
 
     self._model.fit(data)
 
-  def sample(self, count: int):
+  def sample(self, count: int, column_names):
     LOGGER.warning("start sampling of data")
-    return self._model.sample(num_rows = count)
+    df_faker = FakerFactory.apply(self._anonymize, num_rows = count)
+    df_gen = self._model.sample(num_rows = count)
 
-  def save(self, tables):
+    #TODO: Hier fehlt auch wieder die Unterscheidung zwischen multi und single
+    if type(column_names) == list:
+      df = pd.concat([df_gen, df_faker], axis=1)
+      df = df.reindex(columns=column_names)
+
+    if len(self._training.tables) == 1:
+      return {self._training.tables[0].name: df}
+    else:
+      return df
+
+  def save(self, tables, size = 0):
     path_split = self._training.path.split('/')
     new_path = "/".join(path_split[:-1])
+    
 
     if isinstance(tables, pd.DataFrame):
       t_name = path_split[-1].split(".")[0]
-      tables.to_csv(path_or_buf=new_path + "/" + t_name + "_gen" + ".csv", index=False)
+      if size != 0:
+        t_name += '_' + self._model_name + '_' + str(size)
+      self._training.path_gen = new_path + "/" + t_name + "_gen" + ".csv"
+      tables.to_csv(path_or_buf=self._training._path_gen, index=False)
     else:
       for t_name, t_value in tables.items():
         t_value.to_csv(path_or_buf=new_path + "/" + t_name + "_gen" + ".csv", index=False)
@@ -79,11 +110,13 @@ class Generator:
     table_distribution = {}
     table_transformer = {}
     table_anonymize = {}
+    table_field_types = {}
 
     for table in self._training.tables:
       field_distribution = {}
       field_transformer = {}
       field_anonymize = {}
+      field_types = {}
 
       for attr in table.attributes:
         if attr.field_anonymize is not None:
@@ -95,16 +128,21 @@ class Generator:
         if attr.field_distribution is not None:
           field_distribution[attr.name] = attr.field_distribution
 
+        if attr.dtype is not None:
+          field_types[attr.name] = {'type': attr.dtype}
+
       table_distribution[table.name] = field_distribution
       table_transformer[table.name] = field_transformer
       table_anonymize[table.name] = field_anonymize
+      table_field_types[table.name] = field_types
 
     LOGGER.warning(f"Table_distribution: {table_distribution}")
     LOGGER.warning(f"Table_transformer: {table_transformer}")
     LOGGER.warning(f"Table_anonymize: {table_anonymize}")
+    LOGGER.warning(f"Table_types: {table_field_types}")
 
     if len(self._training.tables) > 1:
-      return (table_distribution, table_transformer, table_anonymize)
+      return (table_distribution, table_transformer, table_anonymize, table_field_types)
     else:
-      return (field_distribution, field_transformer, field_anonymize)
+      return (field_distribution, field_transformer, field_anonymize, field_types)
 
