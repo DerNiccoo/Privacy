@@ -10,6 +10,7 @@ from sdv import Metadata
 
 from models import Training
 from fakers import FakerFactory
+from generators import StatisticalGenerator
 
 import pandas as pd
 import logging
@@ -47,6 +48,9 @@ class Generator:
       elif training.tables[0].model == "TVAE": 
         self._model = TVAE(field_transformers = transformer, field_types= types)
         self._model_name = 'tv'
+      elif training.tables[0].model == "Statistical":
+        self._model = StatisticalGenerator(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
+        self._model_name = 'st'        
 
     LOGGER.warning(f'Using Model: {self._model}')
 

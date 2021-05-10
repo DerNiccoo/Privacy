@@ -52,11 +52,11 @@ class Evaluator:
 
       for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
         print(method)
-        #try:
-        results = method.compute(real_tables[table.name].drop(field_anonymize[table.name], axis=1), synthetic_table.drop(field_anonymize[table.name], axis=1))
-        evaluation_result.extend(results)
-        #except:
-        #  LOGGER.warning(f'Error compute eval.{method}')
+        try:
+          results = method.compute(real_tables[table.name].drop(field_anonymize[table.name], axis=1), synthetic_table.drop(field_anonymize[table.name], axis=1))
+          evaluation_result.extend(results)
+        except:
+          LOGGER.warning(f'Error compute eval.{method}')
 
     return evaluation_result
 

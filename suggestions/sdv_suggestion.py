@@ -16,10 +16,16 @@ class SDVSuggestion(BaseSuggestion):
     suggestions = []
 
     for attribute in table_meta.attributes:
+      uniques = len(df[attribute.name].unique())
       if attribute.dtype == 'categorical':
-        uniques = len(df[attribute.name].unique())
         if uniques / len(df) > 0.03: #Wenn es viele davon gibt, besser label_encoding da besser für performance
           suggestions.append({'table': table_name, 'attribute': attribute.name, 'category': 'Transformer', 'solution': 'label_encoding'})
+      elif attribute.dtype == 'numerical':
+        if uniques / len(df) < 0.6:
+          suggestions.append({'table': table_name, 'attribute': attribute.name, 'category': 'Datatype', 'solution': 'categorical'})
+
+          if uniques / len(df) > 0.03:
+            suggestions.append({'table': table_name, 'attribute': attribute.name, 'category': 'Transformer', 'solution': 'label_encoding'})
 
     return suggestions
 
