@@ -11,6 +11,10 @@ from evaluator import Evaluator
 from suggestions import SuggestionFactory
 from postgenerator import PostGenFactory
 
+from pathlib import Path
+from datetime import datetime
+import json
+
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -49,6 +53,7 @@ async def get_database_schema(db_path: str):
 @app.post("/training/")
 async def start_training(training: Training):
   if '_gen' in training.tables[0].name:
+    training.path_gen = training.path
     return training
 
   dc = DataConnector.load(path=training.path)
@@ -57,13 +62,16 @@ async def start_training(training: Training):
   gen = Generator(training, metadata)
   gen.fit(tables)
 
-  new_data = gen.sample(311, dc.get_column_names())
+  real_data = dc.get_tables()
+  length = len(real_data[training.tables[0].name]) # * 10
+
+  new_data = gen.sample(length, dc.get_column_names())
 
   # Post Processing:
-  real_data = dc.get_tables()
+  #real_data = dc.get_tables()
 
-  for table_name, table_df in new_data.items():
-    new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
+  #for table_name, table_df in new_data.items():
+  #  new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
 
   gen.save(new_data)
 
@@ -99,6 +107,60 @@ async def start_evaluation_all(training: Training):
 
       evaluator = Evaluator(training)
       results.append({'name': str(p.stem), 'evaluations': evaluator.run()})
+
+  return results
+
+@app.post("/debug")
+async def start_debug(training: Training):
+  generators = ['TVAE', 'GaussianCopula', 'CTGAN', 'CopulaGAN']
+  #sizes = [50, 100, 311, 622, 3110, 6220, 31100]
+  sizes = [1000, 10000]
+
+  dt = datetime.now()
+  folder_name = str(dt.strftime("%d.%m, %H.%M")) + 'Uhr'
+  path = Path(training.path)
+
+  new_dir = Path(str(path.parent), folder_name)
+  new_dir.mkdir(parents=True, exist_ok=True)
+
+  with open(str(new_dir) + '\\settings.json', 'w+') as outfile:
+      json.dump(training.dict(), outfile)
+
+  dc = DataConnector.load(path=training.path)
+  tables, metadata = dc.get_training_data(training)
+  real_data = dc.get_tables()
+  
+  for g in generators:
+    training.tables[0].model = g
+
+    gen = Generator(training, metadata)
+    gen.fit(tables)
+
+    for s in sizes:
+      new_data = gen.sample(s, dc.get_column_names())
+      gen.save(new_data, appendix=[gen._model_name, s, 'NP'], new_folder=folder_name)
+
+      # Post Processing:
+      for table_name, table_df in new_data.items():
+        new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
+
+      gen.save(new_data, appendix=[gen._model_name, s, 'PP'], new_folder=folder_name)
+
+  results = []
+
+  for file in os.listdir(str(new_dir)):
+    if "settings" in file:
+      continue
+
+    p = Path(str(new_dir) + '\\' + file)
+    path = (str(p.parent) + '\\' + str(p.name)).replace('\\', '/')
+    training.path_gen = path
+
+    evaluator = Evaluator(training)
+    results.append({'name': str(p.stem), 'evaluations': evaluator.run()})
+
+  with open(str(new_dir) + '\\evaluation.json', 'w+') as outfile:
+      json.dump(results, outfile)  
 
   return results
 

@@ -5,6 +5,7 @@ from evaluators.closeness import Closeness
 from evaluators.similarity import Similarity
 from evaluators.sdveval import SDVEval
 from evaluators.anonymity import Anonymity
+from evaluators.wasserstein import Wasserstein
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,4 +24,6 @@ class EvalFactory:
       return SDVEval(settings)
     elif name == 'anonymity':
       return Anonymity(settings)
+    elif name == 'wasserstein':
+      return Wasserstein(settings)
     

@@ -14,12 +14,13 @@ from generators import StatisticalGenerator
 
 import pandas as pd
 import logging
-
+import pathlib
 
 LOGGER = logging.getLogger(__name__)
 
 class Generator:
 
+  _epochs = 300
   _model = None
   _model_name = None
   _training = None
@@ -40,13 +41,13 @@ class Generator:
         self._model = GaussianCopula(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
         self._model_name = 'gc'
       elif training.tables[0].model == "CTGAN": 
-        self._model = CTGAN(anonymize_fields = anonymize, field_transformers = transformer, field_types= types)
+        self._model = CTGAN(anonymize_fields = anonymize, field_transformers = transformer, field_types= types, epochs= self._epochs)
         self._model_name = 'ct'
       elif training.tables[0].model == "CopulaGAN": 
-        self._model = CopulaGAN(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
+        self._model = CopulaGAN(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types, epochs= self._epochs)
         self._model_name = 'cg'
       elif training.tables[0].model == "TVAE": 
-        self._model = TVAE(field_transformers = transformer, field_types= types)
+        self._model = TVAE(field_transformers = transformer, field_types= types, epochs= self._epochs)
         self._model_name = 'tv'
       elif training.tables[0].model == "Statistical":
         self._model = StatisticalGenerator(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
@@ -63,7 +64,7 @@ class Generator:
       columns.append(key)
 
     if len(tables) == 1:
-      data = tables[list(tables.keys())[0]] #Da nur eine Tabelle kein dict von Tabellen übergeben
+      data = tables[list(tables.keys())[0]].copy() #Da nur eine Tabelle kein dict von Tabellen übergeben
       data.drop(columns=columns, inplace=True)
       if self._performance_mode:
         data = data.sample(n=100)
@@ -93,20 +94,33 @@ class Generator:
     else:
       return df
 
-  def save(self, tables, size = 0):
+  def save(self, tables, appendix = [], new_folder = None):
     path_split = self._training.path.split('/')
     new_path = "/".join(path_split[:-1])
-    
 
-    if isinstance(tables, pd.DataFrame):
+    if new_folder is not None:
+      new_path += '/' + new_folder
+
+    appen = ""
+    for apx in appendix:
+        appen += str(apx) + "_"
+        
+    appen = appen[:-1]
+
+    if tables == isinstance(tables, pd.DataFrame):
       t_name = path_split[-1].split(".")[0]
-      if size != 0:
-        t_name += '_' + self._model_name + '_' + str(size)
+      if appen != "":
+        t_name += "_" + str(appen)
       self._training.path_gen = new_path + "/" + t_name + "_gen" + ".csv"
-      tables.to_csv(path_or_buf=self._training._path_gen, index=False)
+      LOGGER.warning(f'Saving Data to: {self._training.path_gen}')
+      tables.to_csv(path_or_buf=self._training.path_gen, index=False, encoding='utf-8-sig')
     else:
       for t_name, t_value in tables.items():
-        t_value.to_csv(path_or_buf=new_path + "/" + t_name + "_gen" + ".csv", index=False)
+        if appen != "":
+          t_name += "_" + str(appen)
+        self._training.path_gen = new_path + "/" + t_name + "_gen" + ".csv"
+        LOGGER.warning(f'Saving Data to: {self._training.path_gen}')
+        t_value.to_csv(path_or_buf=self._training.path_gen, index=False, encoding='utf-8-sig')
 
     return None
 

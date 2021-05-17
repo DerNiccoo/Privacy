@@ -30,6 +30,8 @@ class Evaluator:
       for attribute in table.attributes:
         if attribute.field_anonymize is not None:
           t_anon[table.name].append(attribute.name)
+        if attribute.dtype == 'id':
+          t_anon[table.name].append(attribute.name) # ID fields werden komplett neu erstellt, sollen nicht mit einbezogen werden in Messungen
 
     return t_anon
 
@@ -50,13 +52,16 @@ class Evaluator:
       else:
         synthetic_table = pd.read_csv(self._training.path_gen)
 
+      real = real_tables[table.name].drop(field_anonymize[table.name], axis=1)
+      synthetic = synthetic_table.drop(field_anonymize[table.name], axis=1)
+
       for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
         print(method)
-        try:
-          results = method.compute(real_tables[table.name].drop(field_anonymize[table.name], axis=1), synthetic_table.drop(field_anonymize[table.name], axis=1))
-          evaluation_result.extend(results)
-        except:
-          LOGGER.warning(f'Error compute eval.{method}')
+        #try:
+        results = method.compute(real, synthetic)
+        evaluation_result.extend(results)
+        #except:
+        #  LOGGER.warning(f'Error compute eval.{method}')
 
     return evaluation_result
 
