@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
+import math
 from pandas.api.types import is_numeric_dtype
 
 from evaluators.baseeval import BaseEval
@@ -99,11 +100,14 @@ class Similarity(BaseEval):
 
         dev = 0
         for q_f, q_r in zip(quantile_fake, quantile_real):
-            dev += abs(q_f - q_r)
+          dev += abs(q_f - q_r)
 
         maxima = abs(max(quantile_real, key=abs))
         if abs(max(quantile_fake, key=abs)) > maxima:
-            maxima = abs(max(quantile_fake, key=abs))
+          maxima = abs(max(quantile_fake, key=abs))
+
+        if maxima == 0:
+          maxima = 1
 
         error.append(dev / (buckets * maxima))
 
@@ -113,8 +117,14 @@ class Similarity(BaseEval):
     df = df_diff.where(np.triu(np.ones(df_diff.shape)).astype(np.bool))
     correlation_diff = df.sum().abs().sum()/df.shape[0]
 
+    avg = 0
+    if len(error) != 0:
+      avg = 1 - (sum(error) / len(error))
 
-    return [{'type': 'quality', 'source': 'similarity', 'metric': 'Value comparison', 'name': 'Ähnlichkeitsbestimmung', 'result': {'Avg_bucket_similarity': 1 - (sum(error) / len(error)), 'Max_bucket_similarity': 1 - min(error), 'Min_bucket_similarity': 1 - max(error), 'correlation_difference': correlation_diff}}]
+    if math.isnan(avg):
+      avg = 0.0
+
+    return [{'type': 'quality', 'source': 'similarity', 'metric': 'Value comparison', 'name': 'Ähnlichkeitsbestimmung', 'result': {'Avg_bucket_similarity': avg, 'Max_bucket_similarity': 1 - min(error), 'Min_bucket_similarity': 1 - max(error), 'correlation_difference': correlation_diff}}]
 
   def _compute_old(self, real_data, synthetic_data):
     real_df, synth_df = self._preprocess(real_data, synthetic_data)

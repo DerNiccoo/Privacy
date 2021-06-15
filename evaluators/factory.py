@@ -6,6 +6,7 @@ from evaluators.similarity import Similarity
 from evaluators.sdveval import SDVEval
 from evaluators.anonymity import Anonymity
 from evaluators.wasserstein import Wasserstein
+from evaluators.backgroundanon import BackgroundAnonymity
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,4 +27,5 @@ class EvalFactory:
       return Anonymity(settings)
     elif name == 'wasserstein':
       return Wasserstein(settings)
-    
+    elif name == 'backgroundanonymity':
+      return BackgroundAnonymity(settings)

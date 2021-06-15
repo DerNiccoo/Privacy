@@ -5,6 +5,7 @@ from models import Training
 import pandas as pd
 import logging
 
+
 from connector import DataConnector
 from evaluators import EvalFactory
 
@@ -57,11 +58,11 @@ class Evaluator:
 
       for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
         print(method)
-        #try:
-        results = method.compute(real, synthetic)
-        evaluation_result.extend(results)
-        #except:
-        #  LOGGER.warning(f'Error compute eval.{method}')
+        try:
+          results = method.compute(real, synthetic)
+          evaluation_result.extend(results)
+        except:
+          LOGGER.warning(f'Error compute eval.{method}')
 
     return evaluation_result
 

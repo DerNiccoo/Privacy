@@ -14,21 +14,30 @@ class CorrPostGen(BasePostGen):
     super().__init__()
     self._name = 'SDV'
 
-  def _dataframe_cat(self, df, col_names):
-    df_c = df.copy()
+  def _cast_categorical(self, row, rev_mapping):
+    if row in rev_mapping:
+      return rev_mapping[row]
+    else:
+      return -1
+
+  def _dataframe_cat(self, df_real, df_fake, col_names):
+    df_real_c = df_real.copy()
+    df_fake_c = df_fake.copy()
     
     for col in col_names:
-      if is_numeric_dtype(df[col]):
+      if is_numeric_dtype(df_real[col]):
         continue
 
-      df_c[col] = df[col].astype('category').cat.codes
-        
-    return df_c
+      mapping = dict( enumerate(df_real[col].astype('category').cat.categories ) )
+      rev_mapping = dict((v,k) for k,v in mapping.items())
+          
+      df_real_c[col] = df_real[col].apply(lambda x: self._cast_categorical(x, rev_mapping))
+      df_fake_c[col] = df_fake[col].apply(lambda x: self._cast_categorical(x, rev_mapping))
+    return (df_real_c, df_fake_c)
 
   def _apply_post_process(self, df_real: pd.DataFrame, df_fake: pd.DataFrame, training: Training, table_name: str):
     col_names = self._get_columns_without_faker(training, table_name)
-    df_real_c = self._dataframe_cat(df_real, col_names)
-    df_fake_c = self._dataframe_cat(df_fake, col_names)
+    (df_real_c, df_fake_c) = self._dataframe_cat(df_real, df_fake, col_names)
 
     for i, col1 in enumerate(col_names):
       for k, col2 in enumerate(col_names[i:]):
@@ -44,7 +53,7 @@ class CorrPostGen(BasePostGen):
           
           df_fake = self._correlation_fix(col1, col2, df_real, df_fake)
           
-          df_fake_c = self._dataframe_cat(df_fake, col_names)
+          (df_real_c, df_fake_c) = self._dataframe_cat(df_real, df_fake, col_names)
           corr_fake = df_fake_c[col1].corr(df_fake_c[col2])
           print(f'Fake After: {col1:25}:{col2:25} ==> {corr_fake}')
           print('---'* 30)

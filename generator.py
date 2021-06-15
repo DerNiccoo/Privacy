@@ -20,7 +20,7 @@ LOGGER = logging.getLogger(__name__)
 
 class Generator:
 
-  _epochs = 300
+  _epochs = 3000
   _model = None
   _model_name = None
   _training = None

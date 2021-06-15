@@ -68,10 +68,10 @@ async def start_training(training: Training):
   new_data = gen.sample(length, dc.get_column_names())
 
   # Post Processing:
-  #real_data = dc.get_tables()
+  real_data = dc.get_tables()
 
-  #for table_name, table_df in new_data.items():
-  #  new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
+  for table_name, table_df in new_data.items():
+    new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
 
   gen.save(new_data)
 
@@ -87,26 +87,37 @@ async def start_evaluation(training: Training):
   p = Path(training.path)
   evaluator = Evaluator(training)
   result = evaluator.run()
-
+  
   return [{'name': str(p.stem), 'evaluations': result}]
 
 @app.post("/evaluate/all")
 async def start_evaluation_all(training: Training):
-  p = Path(training.path)
+  folders = [
+      r'E:\GitHub Repos\Masterarbeit\Evaluation_2\HR\11.06, 08.53Uhr\HRD.csv',
+  ]
 
-  folder_path = str(p.parent)
-  file_name = str(p.stem)
+  for f_folder in folders:
+    training.path = f_folder.replace('\\', '/')
+    p = Path(training.path)
 
-  results = []
+    folder_path = str(p.parent)
+    file_name = str(p.stem)
 
-  for file in os.listdir(folder_path):
-    p = Path(folder_path + '\\' + file)
-    if str(p.stem).startswith(file_name + '_'):
-      path = (str(p.parent) + '\\' + str(p.name)).replace('\\', '/')
-      training.path_gen = path
+    results = []
 
-      evaluator = Evaluator(training)
-      results.append({'name': str(p.stem), 'evaluations': evaluator.run()})
+    for file in os.listdir(folder_path):
+      p = Path(folder_path + '\\' + file)
+      if str(p.stem).startswith(file_name + '_'):
+        path = (str(p.parent) + '\\' + str(p.name)).replace('\\', '/')
+        training.path_gen = path
+        print(f'Current File: {file}')
+
+        print(training.path)
+        evaluator = Evaluator(training)
+        results.append({'name': str(p.stem), 'evaluations': evaluator.run()})
+
+    with open(folder_path + '\\evaluation3.json', 'w+') as outfile:
+      json.dump(results, outfile)  
 
   return results
 
@@ -115,6 +126,7 @@ async def start_debug(training: Training):
   generators = ['TVAE', 'GaussianCopula', 'CTGAN', 'CopulaGAN']
   #sizes = [50, 100, 311, 622, 3110, 6220, 31100]
   sizes = [1000, 10000]
+  results = []
 
   dt = datetime.now()
   folder_name = str(dt.strftime("%d.%m, %H.%M")) + 'Uhr'
@@ -124,7 +136,7 @@ async def start_debug(training: Training):
   new_dir.mkdir(parents=True, exist_ok=True)
 
   with open(str(new_dir) + '\\settings.json', 'w+') as outfile:
-      json.dump(training.dict(), outfile)
+    json.dump(training.dict(), outfile)
 
   dc = DataConnector.load(path=training.path)
   tables, metadata = dc.get_training_data(training)
@@ -146,8 +158,6 @@ async def start_debug(training: Training):
 
       gen.save(new_data, appendix=[gen._model_name, s, 'PP'], new_folder=folder_name)
 
-  results = []
-
   for file in os.listdir(str(new_dir)):
     if "settings" in file:
       continue
@@ -160,7 +170,7 @@ async def start_debug(training: Training):
     results.append({'name': str(p.stem), 'evaluations': evaluator.run()})
 
   with open(str(new_dir) + '\\evaluation.json', 'w+') as outfile:
-      json.dump(results, outfile)  
+    json.dump(results, outfile)  
 
   return results
 
