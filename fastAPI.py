@@ -38,57 +38,71 @@ sizes = [50, 100, 311, 622, 3110, 6220, 31100]
 @app.get("/schema/{db_path:path}")
 async def get_database_schema(db_path: str):  
   try:
-    dc = DataConnector.load(path=db_path)
+    try:
+      dc = DataConnector.load(path=db_path)  
+    except Exception as e:
+      raise Exception("Schema: Konnte angegebene Datei nicht finden. Error:" + str(e))
+
+    table_order, pk_relation, fk_relation = dc.get_schema()
+    metadata = dc.get_metadata()
+
+    try:
+      suggestions = SuggestionFactory.create(dc.get_tables(replace_na = False), metadata)
+    except Exception as e:
+      raise Exception("Schema: Konnte empfehlungen nicht Erstellen, möglicherweise leere Tabelle angegeben. Error:" + str(e))
+
+    return {"db_path": db_path, "table_order": table_order, "pk_relation": pk_relation, "fk_relation": fk_relation, 'metadata': metadata, 'suggestions': suggestions}
   except Exception as e:
-    raise HTTPException(status_code=404, detail=str(e)) 
-  
-  table_order, pk_relation, fk_relation = dc.get_schema()
-  metadata = dc.get_metadata()
-
-  suggestions = SuggestionFactory.create(dc.get_tables(replace_na = False), metadata)
-
-  return {"db_path": db_path, "table_order": table_order, "pk_relation": pk_relation, "fk_relation": fk_relation, 'metadata': metadata, 'suggestions': suggestions}
-
+    raise HTTPException(status_code=404, detail="Schema: " + str(e)) 
 
 @app.post("/training/")
 async def start_training(training: Training):
-  if '_gen' in training.tables[0].name:
-    training.path_gen = training.path
+  try:
+    if '_gen' in training.tables[0].name:
+      training.path_gen = training.path
+      return training
+
+    dc = DataConnector.load(path=training.path)
+    tables, metadata = dc.get_training_data(training)
+    
+    gen = Generator(training, metadata)
+    gen.fit(tables)
+
+    real_data = dc.get_tables()
+    length = int(len(real_data[training.tables[0].name]) * training.dataAmount)
+
+    new_data = gen.sample(length, dc.get_column_names())
+
+    # Post Processing:
+    try:
+      real_data = dc.get_tables()
+
+      for table_name, table_df in new_data.items():
+        new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
+    except Exception as e:
+      raise Exception(detail="Generierung: Konnte post processing nicht anwenden. Error: " + str(e))
+
+    gen.save(new_data)
+
+    if debug:
+      for size in sizes:
+        new_data = gen.sample(size, dc.get_column_names())
+        gen.save(new_data, size)      
+
     return training
-
-  dc = DataConnector.load(path=training.path)
-  tables, metadata = dc.get_training_data(training)
-  
-  gen = Generator(training, metadata)
-  gen.fit(tables)
-
-  real_data = dc.get_tables()
-  length = len(real_data[training.tables[0].name]) # * 10
-
-  new_data = gen.sample(length, dc.get_column_names())
-
-  # Post Processing:
-  real_data = dc.get_tables()
-
-  for table_name, table_df in new_data.items():
-    new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
-
-  gen.save(new_data)
-
-  if debug:
-    for size in sizes:
-      new_data = gen.sample(size, dc.get_column_names())
-      gen.save(new_data, size)      
-
-  return training
+  except Exception as e:
+    raise HTTPException(status_code=404, detail="Generierung: " + str(e)) 
 
 @app.post("/evaluate/")
 async def start_evaluation(training: Training):
-  p = Path(training.path)
-  evaluator = Evaluator(training)
-  result = evaluator.run()
-  
-  return [{'name': str(p.stem), 'evaluations': result}]
+  try:
+    p = Path(training.path)
+    evaluator = Evaluator(training)
+    result = evaluator.run()
+    
+    return [{'name': str(p.stem), 'evaluations': result}]
+  except Exception as e:
+    raise HTTPException(status_code=404, detail="Evaluation: " + str(e)) 
 
 @app.post("/evaluate/all")
 async def start_evaluation_all(training: Training):

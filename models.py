@@ -25,6 +25,9 @@ class Training(BaseModel):
   path_gen: Optional[str]
   tables: List[Table]
   evaluators: typing.Dict[str, DataEvaluator]
+  epoch: Optional[float]
+  dataFactor: Optional[float] # Wie viele Daten betracht werden sollen [0.01, 1]
+  dataAmount: Optional[float] # Wie viele Daten generiert werden sollen
 
   train_tables : Optional[List[str]] #TODO: Ugly workarround da es einfach mit _ davor nicht geht und zuweisungen...
   train_attr : Optional[typing.Dict[str, List[str]]]

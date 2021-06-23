@@ -20,7 +20,7 @@ LOGGER = logging.getLogger(__name__)
 
 class Generator:
 
-  _epochs = 3000
+  _epochs = 300
   _model = None
   _model_name = None
   _training = None
@@ -32,6 +32,10 @@ class Generator:
 
     distribution, transformer, anonymize, types = self._get_settings()
     self._anonymize = anonymize
+    self._epochs = int(training.epoch)
+    LOGGER.warning(f'Epochs: {training.epoch}')
+    LOGGER.warning(f'DataAmount: {training.dataAmount}')
+    LOGGER.warning(f'DataFactor: {training.dataFactor}')
 
     if len(self._training.tables) > 1:
       LOGGER.warning(f"Using HMA1")
@@ -66,8 +70,8 @@ class Generator:
     if len(tables) == 1:
       data = tables[list(tables.keys())[0]].copy() #Da nur eine Tabelle kein dict von Tabellen übergeben
       data.drop(columns=columns, inplace=True)
-      if self._performance_mode:
-        data = data.sample(n=100)
+      if self._training.dataFactor != 1:
+        data = data.sample(n = int(len(data) * self._training.dataFactor))
     else:
       #Reduction in dataset only. Debugging only. Hardcodeing for given Dataset:
       data['player'] = tables['player'].sample(n=10)
