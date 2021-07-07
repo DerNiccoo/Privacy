@@ -5,6 +5,7 @@ import pandas as pd
 from sdv import Metadata
 from models import Training, Table, Attribute, DataEvaluator
 import operator
+from pathlib import Path
 
 from connector.baseconnector import BaseConnector
 
@@ -21,7 +22,8 @@ class CSVConnector(BaseConnector):
 
   def __init__(self, path : str):
     super().__init__(path)
-    self._table_name = self.path.split('/')[-1].split('.')[0]
+    self._table_name = str(Path(self.path).name).split('.')[0]
+    #self._table_name = self.path.split('/')[-1].split('.')[0]
 
   def _get_schema(self):
     self._table_name = self.path.split('/')[-1].split('.')[0]

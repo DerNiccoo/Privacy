@@ -26,9 +26,11 @@ class Generator:
   _training = None
   _anonymize = None
   _performance_mode = False
+  _loadedModelPath = None
 
-  def __init__(self, training: Training, metadata: Metadata):
+  def __init__(self, training: Training, metadata: Metadata, loadedModelPath: str = None):
     self._training = training
+    self._loadedModelPath = loadedModelPath
 
     distribution, transformer, anonymize, types = self._get_settings()
     self._anonymize = anonymize
@@ -42,16 +44,28 @@ class Generator:
       self._model = HMA1(metadata)
     else:
       if training.tables[0].model == "GaussianCopula":
-        self._model = GaussianCopula(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
+        if loadedModelPath is not None:
+          self._model = GaussianCopula.load(loadedModelPath)
+        else:
+          self._model = GaussianCopula(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
         self._model_name = 'gc'
       elif training.tables[0].model == "CTGAN": 
-        self._model = CTGAN(anonymize_fields = anonymize, field_transformers = transformer, field_types= types, epochs= self._epochs)
+        if loadedModelPath is not None:
+          self._model = CTGAN.load(loadedModelPath)
+        else:
+          self._model = CTGAN(anonymize_fields = anonymize, field_transformers = transformer, field_types= types, epochs= self._epochs)
         self._model_name = 'ct'
       elif training.tables[0].model == "CopulaGAN": 
-        self._model = CopulaGAN(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types, epochs= self._epochs)
+        if loadedModelPath is not None:
+          self._model = CopulaGAN.load(loadedModelPath)
+        else:
+          self._model = CopulaGAN(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types, epochs= self._epochs)
         self._model_name = 'cg'
       elif training.tables[0].model == "TVAE": 
-        self._model = TVAE(field_transformers = transformer, field_types= types, epochs= self._epochs)
+        if loadedModelPath is not None:
+          self._model = TVAE.load(loadedModelPath)
+        else:
+          self._model = TVAE(field_transformers = transformer, field_types= types, epochs= self._epochs)
         self._model_name = 'tv'
       elif training.tables[0].model == "Statistical":
         self._model = StatisticalGenerator(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
@@ -82,6 +96,7 @@ class Generator:
       LOGGER.warning(f"Started fitting with {len(data)} data points")
 
     self._model.fit(data)
+    self._model.save(self._training.temp_folder_path + "\\model.pkl")
 
   def sample(self, count: int, column_names):
     LOGGER.warning("start sampling of data")
@@ -98,12 +113,15 @@ class Generator:
     else:
       return df
 
-  def save(self, tables, appendix = [], new_folder = None):
-    path_split = self._training.path.split('/')
-    new_path = "/".join(path_split[:-1])
+  def save(self, tables, appendix = [], new_folder = None, absolut=False):
+    if absolut == False:
+      path_split = self._training.path.split('/')
+      new_path = "/".join(path_split[:-1])
 
-    if new_folder is not None:
-      new_path += '/' + new_folder
+      if new_folder is not None:
+        new_path += '/' + new_folder
+    else:
+      new_path = new_folder
 
     appen = ""
     for apx in appendix:

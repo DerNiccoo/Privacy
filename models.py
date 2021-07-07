@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
 import typing
 from typing import List, Optional
 import pandas as pd
@@ -28,7 +28,8 @@ class Training(BaseModel):
   epoch: Optional[float]
   dataFactor: Optional[float] # Wie viele Daten betracht werden sollen [0.01, 1]
   dataAmount: Optional[float] # Wie viele Daten generiert werden sollen
-
+  
+  temp_folder_path: str = Optional[str]
   train_tables : Optional[List[str]] #TODO: Ugly workarround da es einfach mit _ davor nicht geht und zuweisungen...
   train_attr : Optional[typing.Dict[str, List[str]]]
 

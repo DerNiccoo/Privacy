@@ -1,7 +1,8 @@
 import uvicorn
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
+from typing import List
 from models import Training, Table
 from pathlib import Path
 
@@ -13,7 +14,9 @@ from postgenerator import PostGenFactory
 
 from pathlib import Path
 from datetime import datetime
+from shutil import copyfile
 import json
+import random
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -45,6 +48,7 @@ async def get_database_schema(db_path: str):
 
     table_order, pk_relation, fk_relation = dc.get_schema()
     metadata = dc.get_metadata()
+    metadata.temp_folder_path=None
 
     try:
       suggestions = SuggestionFactory.create(dc.get_tables(replace_na = False), metadata)
@@ -64,6 +68,17 @@ async def start_training(training: Training):
 
     dc = DataConnector.load(path=training.path)
     tables, metadata = dc.get_training_data(training)
+
+    dt = datetime.now()
+    path = Path(training.path)
+    folder_name = str(dt.strftime("%d.%m, %H.%M")) + 'Uhr ' + path.stem
+    new_dir = Path(str(path.parent), folder_name)
+    new_dir.mkdir(parents=True, exist_ok=True)
+
+    training.temp_folder_path = str(new_dir)
+    copyfile(path, str(new_dir) + '\\' + path.name)
+    with open(str(new_dir) + '\\settings.json', 'w+') as outfile:
+      json.dump(training.dict(), outfile)
     
     gen = Generator(training, metadata)
     gen.fit(tables)
@@ -82,7 +97,7 @@ async def start_training(training: Training):
     except Exception as e:
       raise Exception(detail="Generierung: Konnte post processing nicht anwenden. Error: " + str(e))
 
-    gen.save(new_data)
+    gen.save(new_data, new_folder=folder_name)
 
     if debug:
       for size in sizes:
@@ -99,7 +114,10 @@ async def start_evaluation(training: Training):
     p = Path(training.path)
     evaluator = Evaluator(training)
     result = evaluator.run()
-    
+
+    with open(training.temp_folder_path + '\\evaluation.json', 'w+') as outfile:
+      json.dump(result, outfile)
+
     return [{'name': str(p.stem), 'evaluations': result}]
   except Exception as e:
     raise HTTPException(status_code=404, detail="Evaluation: " + str(e)) 
@@ -187,6 +205,52 @@ async def start_debug(training: Training):
     json.dump(results, outfile)  
 
   return results
+
+@app.get("/reset")
+async def hard_reset():
+  with open("reset.txt", "w+") as f:
+    f.write(str(random.getrandbits(128)))
+
+@app.get("/load/{save_file:path}")
+async def load_model(save_file: str):
+  with open(save_file,) as jfile:    
+    jload = json.load(jfile)
+  
+  training = Training.parse_obj(jload)
+
+  dc = DataConnector.load(path=training.path)  
+  table_order, pk_relation, fk_relation = dc.get_schema()
+
+  return {"db_path": save_file, "table_order": table_order, "pk_relation": pk_relation, "fk_relation": fk_relation, 'metadata': training, 'suggestions': []}
+
+
+@app.get("/loadedModel/{load_path:path}/{amount:float}")
+async def start_evaluation(load_path: str, amount: float):
+#  try:
+    with open(load_path,) as jfile:    
+      jload = json.load(jfile)
+    
+    training = Training.parse_obj(jload)
+
+    parentPath = Path(load_path).parents[0]
+    fileCount = [y for y in parentPath.rglob(f'*')] 
+    parentPath = str(parentPath)
+
+    fileName = Path(training.path).name
+
+    dc = DataConnector.load(parentPath + '\\' + fileName)
+    tables = dc.get_tables()
+    gen = Generator(training, None, parentPath+ '\\model.pkl')
+
+    dc = DataConnector.load(parentPath + '\\' + fileName.split('.')[0] + '_gen.' + fileName.split('.')[1])
+    tables_gen = dc.get_tables()
+
+    new_data = gen.sample(int(len(tables[fileName.split('.')[0]]) * amount), list(tables_gen[fileName.split('.')[0] + '_gen'].columns))
+
+    gen.save(new_data, [len(fileCount)], str(parentPath), absolut=True)
+    return True
+#  except Exception as e:
+#    raise HTTPException(status_code=404, detail="LoadedModel: " + str(e)) 
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
