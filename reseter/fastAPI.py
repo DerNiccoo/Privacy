@@ -30,7 +30,7 @@ app.add_middleware(
 
 @app.get("/reset")
 async def hard_reset():
-  with open("reset.txt", "w+") as f:
+  with open("reset.py", "w+") as f:
     f.write(str(random.getrandbits(128)))
 
 if __name__ == "__main__":
