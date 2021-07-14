@@ -31,10 +31,40 @@ class Evaluator:
       for attribute in table.attributes:
         if attribute.field_anonymize is not None:
           t_anon[table.name].append(attribute.name)
-        if attribute.dtype == 'id':
-          t_anon[table.name].append(attribute.name) # ID fields werden komplett neu erstellt, sollen nicht mit einbezogen werden in Messungen
+        #if attribute.dtype == 'id':
+        #  t_anon[table.name].append(attribute.name) # ID fields werden komplett neu erstellt, sollen nicht mit einbezogen werden in Messungen
 
     return t_anon
+
+  def _join_tables(self, tables_gen, tables_og):
+    dc = DataConnector.load(path=self._training.path)
+    _, metadata = dc.get_training_data(self._training)
+    metadata = metadata.to_dict()
+
+    df_real = pd.DataFrame()
+    df_fake = pd.DataFrame()
+    added_tables = []
+
+    for key, table in metadata['tables'].items():
+      for key_at, attr in table['fields'].items():
+        if 'ref' in attr:
+          print(key)
+          print(attr)
+          if key in added_tables:
+            df_real.join(tables_og[attr['ref']['table']].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            df_fake.join(tables_gen[attr['ref']['table']].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            added_tables.append(attr['ref']['table'])
+          elif attr['ref']['table'] in added_tables:
+            df_real.join(tables_og[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            df_fake.join(tables_gen[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            added_tables.append(key)
+          else:
+            df_real = tables_og[attr['ref']['table']].join(tables_og[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            df_fake = tables_gen[attr['ref']['table']].join(tables_gen[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            added_tables.append(key)
+            added_tables.append(attr['ref']['table'])
+
+    return (df_real, df_fake)
 
   def run(self):
     if self._training.path_gen == None:
@@ -44,12 +74,12 @@ class Evaluator:
         path_split = self._training.path_gen.split('/')
         new_path = "/".join(path_split[:-1])
 
-    #dc = DataConnector.load(path=self._training.path)
-    #real_tables, _ = dc.get_training_data(self._training)
-
     field_anonymize = self._get_anonymized_fields()
 
     evaluation_result = []
+
+    tables_gen = {}
+    tables_og = {}
 
     for table in self._training.tables:
       real_table = pd.read_csv(new_path + "/" + table.name + ".csv")
@@ -58,6 +88,9 @@ class Evaluator:
       real = real_table.drop(field_anonymize[table.name], axis=1)
       synthetic = synthetic_table.drop(field_anonymize[table.name], axis=1)
 
+      tables_gen[table.name] = synthetic
+      tables_og[table.name] = real
+
       for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
         print(method)
         try:
@@ -65,6 +98,12 @@ class Evaluator:
           evaluation_result.extend(results)
         except:
           LOGGER.warning(f'Error compute eval.{method}')
+
+    if len(self._training.tables) > 1:
+      real, synthetic = self._join_tables(tables_gen, tables_og)
+      eval = EvalFactory.create('backgroundanonymity', {})
+      results = eval.compute(real, synthetic)
+      evaluation_result.extend(results)
 
     return evaluation_result
 

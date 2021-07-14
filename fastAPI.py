@@ -88,7 +88,7 @@ async def start_training(training: Training):
     gen.fit(tables, new_folder=folder_name)
 
     real_data = dc.get_tables()
-    length = 5000#int(len(real_data[training.tables[0].name]) * training.dataAmount)
+    length = 100#int(len(real_data[training.tables[0].name]) * training.dataAmount)
 
     new_data = gen.sample(length, dc.get_column_names())
 

@@ -184,9 +184,6 @@ class SQLConnector(BaseConnector):
             LOGGER.info("adding valid relation")
             
             #TODO: Die Metadaten hier adden den falschen Key zur Tabelle als FK. Muss möglicherweise manuell angepasst werden
-            print("Relations")
-            print(fk_rel["table"])
-            print(fk_rel["dest"])
             if fk_rel["dest"] == 'player_fifa_api_id':
               continue
             metadata.add_relationship(

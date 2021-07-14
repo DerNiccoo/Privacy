@@ -84,10 +84,13 @@ class Generator:
         data = data.sample(n = int(len(data) * self._training.dataFactor))
     else:
       #Reduction in dataset only. Debugging only. Hardcodeing for given Dataset:
-      data['player'] = tables['player'].sample(n=5000)
-      boolean_series = tables['player_attributes'].player_api_id.isin(data['player'].player_api_id)
-      data['player_attributes'] = tables['player_attributes'][boolean_series]
-      data['player_attributes'] = data['player_attributes'].drop_duplicates(subset=['player_api_id'], keep='first')
+      try:
+        data['player'] = tables['player'].sample(n=100)
+        boolean_series = tables['player_attributes'].player_api_id.isin(data['player'].player_api_id)
+        data['player_attributes'] = tables['player_attributes'][boolean_series]
+        data['player_attributes'] = data['player_attributes'].drop_duplicates(subset=['player_api_id'], keep='first')
+      except Exception as e:
+        data = tables
 
       LOGGER.warning(f"For debugging reason only allow training with 100 or less Datapoints")
       LOGGER.warning(f"Started fitting with {len(data)} data points")
