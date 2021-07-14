@@ -17,6 +17,7 @@ class SQLConnector(BaseConnector):
   _tables = None
   _pk_relation = None
   _fk_relation = None
+  _table_columns = {}
 
   def __init__(self, path : str):
     super().__init__(path)
@@ -148,27 +149,49 @@ class SQLConnector(BaseConnector):
     table_order, pk_relation, fk_relation = self._get_schema()
     con = sqlite3.connect(self.path)
 
+    table_order = ['player', 'player_attributes'] ## Debug!!! Die erkannte ordnung der Tabellen ist irgendwie falsch!
+
+    trainingNames = []
+    trainingsTables = {}
     for table in training.tables:
-      df = pd.read_sql_query('SELECT '+ self._get_selected_attributes(table) +' FROM ' + table.name, con)
-      tables[table.name] = df
+      trainingNames.append(table.name)
+      trainingsTables[table.name] = table
+
+    for table in table_order:
+      if table not in trainingNames:
+        continue
+
+      df = pd.read_sql_query('SELECT '+ self._get_selected_attributes(trainingsTables[table]) +' FROM ' + table, con)
+      for col in df.columns.tolist():
+        if df[col].dtypes == 'object':
+          df[col].fillna('', inplace=True)
+        else:
+          df[col].fillna(0, inplace=True)
+
+      tables[table] = df
 
       metadata.add_table(
-        name=table.name,
+        name=table,
         data=df,
-        primary_key=pk_relation[table.name][0] #TODO: Könnte sein, dass es mehr prim keys gibt. Dann schauen.
+        primary_key=pk_relation[table][0] #TODO: Könnte sein, dass es mehr prim keys gibt. Dann schauen.
       )
 
       #TODO: FK Relation zu den Metadaten hinzufügen
-      for fk_rel in fk_relation[table.name]:
+      for fk_rel in fk_relation[table]:
         #TODO: Prüfen ob Tabelle und Attrs mit trainiert werden sollen
         if fk_rel["table"] in training.get_tables():
-          if fk_rel["origin"] in training.train_attr[table.name] and fk_rel["dest"] in training.train_attr[fk_rel["table"]]:
+          if fk_rel["origin"] in training.train_attr[table] and fk_rel["dest"] in training.train_attr[fk_rel["table"]]:
             LOGGER.info("adding valid relation")
             
             #TODO: Die Metadaten hier adden den falschen Key zur Tabelle als FK. Muss möglicherweise manuell angepasst werden
+            print("Relations")
+            print(fk_rel["table"])
+            print(fk_rel["dest"])
+            if fk_rel["dest"] == 'player_fifa_api_id':
+              continue
             metadata.add_relationship(
               parent=fk_rel["table"],
-              child=table.name,
+              child=table,
               foreign_key=fk_rel["dest"]
             )
 
@@ -182,3 +205,29 @@ class SQLConnector(BaseConnector):
     con.close()
     return (tables, metadata)
 
+  def _get_tables(self, replace_na: bool = True):
+    result = {}
+
+    for table in self._tables:
+      result[table] = self._get_dataframe(table)
+    return result
+
+  def _get_column_names(self):
+    return self._table_columns
+
+  def _get_dataframe(self, tableName, replace_na: bool = True):
+    con = sqlite3.connect(self.path)
+    df = pd.read_sql_query('SELECT * FROM ' + tableName, con)
+
+    self._table_columns[tableName] = list(df.columns)
+
+    if replace_na:
+      for col in df.columns.tolist():
+        if df[col].dtypes == 'object':
+          df[col].fillna('', inplace=True)
+        else:
+          df[col].fillna(0, inplace=True)
+
+    con.close()
+
+    return df

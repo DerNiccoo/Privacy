@@ -15,8 +15,8 @@ class BackgroundAnonymity(BaseEval):
     self._settings = settings
 
   def _compute(self, real_data, synthetic_data):
-    if len(real_data) != len(synthetic_data):
-      raise ValueError('Missmatch of dataset sizes. Skipping messurement.')
+    #if len(real_data) != len(synthetic_data):
+    #  raise ValueError('Missmatch of dataset sizes. Skipping messurement.')
 
     result = self._messure_anonymity(real_data, synthetic_data, top_k=10)
     return [{'type': 'anonymity', 'source': 'background_anonymity', 'metric': 'background anonymity Attack', 'name': 'Hintergrundswissen Angriff', 'result': result}]

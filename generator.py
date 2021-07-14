@@ -35,12 +35,8 @@ class Generator:
     distribution, transformer, anonymize, types = self._get_settings()
     self._anonymize = anonymize
     self._epochs = int(training.epoch)
-    LOGGER.warning(f'Epochs: {training.epoch}')
-    LOGGER.warning(f'DataAmount: {training.dataAmount}')
-    LOGGER.warning(f'DataFactor: {training.dataFactor}')
 
     if len(self._training.tables) > 1:
-      LOGGER.warning(f"Using HMA1")
       self._model = HMA1(metadata)
     else:
       if training.tables[0].model == "GaussianCopula":
@@ -73,7 +69,7 @@ class Generator:
 
     LOGGER.warning(f'Using Model: {self._model}')
 
-  def fit(self, tables: dict):
+  def fit(self, tables: dict, new_folder = None):
     data = tables
 
     columns = []
@@ -88,12 +84,15 @@ class Generator:
         data = data.sample(n = int(len(data) * self._training.dataFactor))
     else:
       #Reduction in dataset only. Debugging only. Hardcodeing for given Dataset:
-      data['player'] = tables['player'].sample(n=10)
+      data['player'] = tables['player'].sample(n=5000)
       boolean_series = tables['player_attributes'].player_api_id.isin(data['player'].player_api_id)
       data['player_attributes'] = tables['player_attributes'][boolean_series]
+      data['player_attributes'] = data['player_attributes'].drop_duplicates(subset=['player_api_id'], keep='first')
 
       LOGGER.warning(f"For debugging reason only allow training with 100 or less Datapoints")
       LOGGER.warning(f"Started fitting with {len(data)} data points")
+
+    self.save(data, new_folder=new_folder, generated=False)
 
     self._model.fit(data)
     self._model.save(self._training.temp_folder_path + "\\model.pkl")
@@ -101,19 +100,37 @@ class Generator:
   def sample(self, count: int, column_names):
     LOGGER.warning("start sampling of data")
     df_faker = FakerFactory.apply(self._anonymize, num_rows = count)
+    print('Generating rows: ' + str(count))
     df_gen = self._model.sample(num_rows = count)
 
     #TODO: Hier fehlt auch wieder die Unterscheidung zwischen multi und single
     if type(column_names) == list:
       df = pd.concat([df_gen, df_faker], axis=1)
       df = df.reindex(columns=column_names)
+    else:
+      result = {}
+      for table, cols in column_names.items():
+        try:
+          faker_cols = [i for i in cols if i in list(df_faker.columns)] # z.B. name, job
+          if len(faker_cols) > 0:
+            faker_df = pd.DataFrame()
+            
+            for f_cols in faker_cols:
+              faker_df[f_cols] = df_faker[f_cols]
+
+            result[table] = pd.concat([df_gen[table], faker_df], axis=1)
+            result[table] = result[table].reindex(columns=cols)
+          else:
+            result[table] = df_gen[table]
+        except KeyError as e:
+          print('Table ' + str(e) + ' not generated. This isnt always a error')
 
     if len(self._training.tables) == 1:
       return {self._training.tables[0].name: df}
     else:
-      return df
+      return result
 
-  def save(self, tables, appendix = [], new_folder = None, absolut=False):
+  def save(self, tables, appendix = [], new_folder = None, absolut=False, generated=True):
     if absolut == False:
       path_split = self._training.path.split('/')
       new_path = "/".join(path_split[:-1])
@@ -129,18 +146,22 @@ class Generator:
         
     appen = appen[:-1]
 
+    gen_app = ""
+    if generated:
+      gen_app = "_gen"
+
     if tables == isinstance(tables, pd.DataFrame):
       t_name = path_split[-1].split(".")[0]
       if appen != "":
         t_name += "_" + str(appen)
-      self._training.path_gen = new_path + "/" + t_name + "_gen" + ".csv"
+      self._training.path_gen = new_path + "/" + t_name + gen_app + ".csv"
       LOGGER.warning(f'Saving Data to: {self._training.path_gen}')
       tables.to_csv(path_or_buf=self._training.path_gen, index=False, encoding='utf-8-sig')
     else:
       for t_name, t_value in tables.items():
         if appen != "":
           t_name += "_" + str(appen)
-        self._training.path_gen = new_path + "/" + t_name + "_gen" + ".csv"
+        self._training.path_gen = new_path + "/" + t_name + gen_app + ".csv"
         LOGGER.warning(f'Saving Data to: {self._training.path_gen}')
         t_value.to_csv(path_or_buf=self._training.path_gen, index=False, encoding='utf-8-sig')
 

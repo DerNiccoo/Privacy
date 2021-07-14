@@ -44,7 +44,7 @@ sizes = [50, 100, 311, 622, 3110, 6220, 31100]
 
 @app.get("/schema/{db_path:path}")
 async def get_database_schema(db_path: str):  
-  try:
+  #try:
     try:
       dc = DataConnector.load(path=db_path)  
     except Exception as e:
@@ -54,18 +54,18 @@ async def get_database_schema(db_path: str):
     metadata = dc.get_metadata()
     metadata.temp_folder_path=None
 
-    try:
-      suggestions = SuggestionFactory.create(dc.get_tables(replace_na = False), metadata)
-    except Exception as e:
-      raise Exception("Schema: Konnte empfehlungen nicht Erstellen, möglicherweise leere Tabelle angegeben. Error:" + str(e))
+    #try:
+    suggestions = SuggestionFactory.create(dc.get_tables(replace_na = False), metadata)
+    #except Exception as e:
+    #  raise Exception("Schema: Konnte empfehlungen nicht Erstellen, möglicherweise leere Tabelle angegeben. Error:" + str(e))
 
     return {"db_path": db_path, "table_order": table_order, "pk_relation": pk_relation, "fk_relation": fk_relation, 'metadata': metadata, 'suggestions': suggestions}
-  except Exception as e:
-    raise HTTPException(status_code=404, detail="Schema: " + str(e)) 
+  #except Exception as e:
+  #  raise HTTPException(status_code=404, detail="Schema: " + str(e)) 
 
 @app.post("/training/")
 async def start_training(training: Training):
-  try:
+  #try:
     if '_gen' in training.tables[0].name:
       training.path_gen = training.path
       return training
@@ -80,15 +80,15 @@ async def start_training(training: Training):
     new_dir.mkdir(parents=True, exist_ok=True)
 
     training.temp_folder_path = str(new_dir)
-    copyfile(path, str(new_dir) + '\\' + path.name)
+    #copyfile(path, str(new_dir) + '\\' + path.name)
     with open(str(new_dir) + '\\settings.json', 'w+') as outfile:
       json.dump(training.dict(), outfile)
     
     gen = Generator(training, metadata)
-    gen.fit(tables)
+    gen.fit(tables, new_folder=folder_name)
 
     real_data = dc.get_tables()
-    length = int(len(real_data[training.tables[0].name]) * training.dataAmount)
+    length = 5000#int(len(real_data[training.tables[0].name]) * training.dataAmount)
 
     new_data = gen.sample(length, dc.get_column_names())
 
@@ -109,12 +109,12 @@ async def start_training(training: Training):
         gen.save(new_data, size)      
 
     return training
-  except Exception as e:
-    raise HTTPException(status_code=404, detail="Generierung: " + str(e)) 
+  #except Exception as e:
+  #  raise HTTPException(status_code=404, detail="Generierung: " + str(e)) 
 
 @app.post("/evaluate/")
 async def start_evaluation(training: Training):
-  try:
+  #try:
     p = Path(training.path)
     evaluator = Evaluator(training)
     result = evaluator.run()
@@ -123,8 +123,8 @@ async def start_evaluation(training: Training):
       json.dump(result, outfile)
 
     return [{'name': str(p.stem), 'evaluations': result}]
-  except Exception as e:
-    raise HTTPException(status_code=404, detail="Evaluation: " + str(e)) 
+  #except Exception as e:
+ #  raise HTTPException(status_code=404, detail="Evaluation: " + str(e)) 
 
 @app.post("/evaluate/all")
 async def start_evaluation_all(training: Training):

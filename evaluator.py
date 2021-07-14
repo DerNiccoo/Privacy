@@ -37,23 +37,25 @@ class Evaluator:
     return t_anon
 
   def run(self):
-    path_split = self._training.path.split('/')
-    new_path = "/".join(path_split[:-1])
+    if self._training.path_gen == None:
+      path_split = self._training.path.split('/')
+      new_path = "/".join(path_split[:-1])
+    else:
+        path_split = self._training.path_gen.split('/')
+        new_path = "/".join(path_split[:-1])
 
-    dc = DataConnector.load(path=self._training.path)
-    real_tables, _ = dc.get_training_data(self._training)
+    #dc = DataConnector.load(path=self._training.path)
+    #real_tables, _ = dc.get_training_data(self._training)
 
     field_anonymize = self._get_anonymized_fields()
 
     evaluation_result = []
 
     for table in self._training.tables:
-      if self._training.path_gen == None:        
-        synthetic_table = pd.read_csv(new_path + "/" + table.name + "_gen.csv")
-      else:
-        synthetic_table = pd.read_csv(self._training.path_gen)
+      real_table = pd.read_csv(new_path + "/" + table.name + ".csv")
+      synthetic_table = pd.read_csv(new_path + "/" + table.name + "_gen.csv")
 
-      real = real_tables[table.name].drop(field_anonymize[table.name], axis=1)
+      real = real_table.drop(field_anonymize[table.name], axis=1)
       synthetic = synthetic_table.drop(field_anonymize[table.name], axis=1)
 
       for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
