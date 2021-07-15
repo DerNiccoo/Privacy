@@ -48,8 +48,6 @@ class Evaluator:
     for key, table in metadata['tables'].items():
       for key_at, attr in table['fields'].items():
         if 'ref' in attr:
-          print(key)
-          print(attr)
           if key in added_tables:
             df_real.join(tables_og[attr['ref']['table']].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
             df_fake.join(tables_gen[attr['ref']['table']].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
@@ -100,7 +98,9 @@ class Evaluator:
           LOGGER.warning(f'Error compute eval.{method}')
 
     if len(self._training.tables) > 1:
-      real, synthetic = self._join_tables(tables_gen, tables_og)
+      dc = DataConnector.load(path=self._training.path)
+      real = dc.join_table(self._training, tables_og)
+      synthetic = dc.join_table(self._training, tables_gen)
       eval = EvalFactory.create('backgroundanonymity', {})
       results = eval.compute(real, synthetic)
       evaluation_result.extend(results)

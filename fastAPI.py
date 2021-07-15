@@ -3,7 +3,7 @@ import os
 
 from fastapi import FastAPI, HTTPException, Query
 from typing import List
-from models import Training, Table
+from models import Training, Table, Attribute
 from pathlib import Path
 
 from connector import DataConnector
@@ -85,12 +85,19 @@ async def start_training(training: Training):
       json.dump(training.dict(), outfile)
     
     gen = Generator(training, metadata)
-    gen.fit(tables, new_folder=folder_name)
+    col_names = gen.fit(tables, new_folder=folder_name)
+    if col_names == None:
+      col_names = dc.get_column_names()
 
     real_data = dc.get_tables()
-    length = 100#int(len(real_data[training.tables[0].name]) * training.dataAmount)
+    if len(training.tables) > 1:
+      length = 100#int(len(real_data[training.tables[0].name]) * training.dataAmount)
+    else:
+      length = int(len(real_data[training.tables[0].name]) * training.dataAmount)
 
-    new_data = gen.sample(length, dc.get_column_names())
+    print(col_names)
+    training = change_training(training)    
+    new_data = gen.sample(length, col_names)
 
     # Post Processing:
     try:
@@ -109,6 +116,7 @@ async def start_training(training: Training):
         gen.save(new_data, size)      
 
     return training
+
   #except Exception as e:
   #  raise HTTPException(status_code=404, detail="Generierung: " + str(e)) 
 
@@ -255,6 +263,22 @@ async def start_evaluation(load_path: str, amount: float):
     return True
 #  except Exception as e:
 #    raise HTTPException(status_code=404, detail="LoadedModel: " + str(e)) 
+
+
+def change_training(training: Training):
+  if len(training.tables) > 1 and training.tables[0].model != 'HMA':
+    p = Path(training.path)
+    
+    attributes_list = []
+    for table in training.tables:
+      for attr in table.attributes:
+        attributes_list.append(Attribute(**{'name': attr.name, 'dtype': attr.dtype, 'field_distribution': attr.field_distribution, 'field_transformer': attr.field_transformer, 'field_anonymize': attr.field_anonymize}))
+
+    training.tables = [Table(**{'name': p.stem, 'attributes': attributes_list, 'model': training.tables[0].model})]
+    training.joined = True
+
+  return training
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

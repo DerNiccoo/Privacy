@@ -7,7 +7,7 @@ from sdv.tabular import CopulaGAN
 from sdv.tabular import TVAE
 from sdv.relational import HMA1
 from sdv import Metadata
-
+from connector import DataConnector
 from models import Training
 from fakers import FakerFactory
 from generators import StatisticalGenerator
@@ -27,6 +27,7 @@ class Generator:
   _anonymize = None
   _performance_mode = False
   _loadedModelPath = None
+  _col_names = None
 
   def __init__(self, training: Training, metadata: Metadata, loadedModelPath: str = None):
     self._training = training
@@ -36,40 +37,47 @@ class Generator:
     self._anonymize = anonymize
     self._epochs = int(training.epoch)
 
-    if len(self._training.tables) > 1:
+    if training.tables[0].model == "GaussianCopula":
+      if loadedModelPath is not None:
+        self._model = GaussianCopula.load(loadedModelPath)
+      else:
+        self._model = GaussianCopula(field_transformers = transformer, field_distributions = distribution, field_types= types)
+      self._model_name = 'gc'
+    elif training.tables[0].model == "CTGAN": 
+      if loadedModelPath is not None:
+        self._model = CTGAN.load(loadedModelPath)
+      else:
+        self._model = CTGAN(field_transformers = transformer, field_types= types, epochs= self._epochs)
+      self._model_name = 'ct'
+    elif training.tables[0].model == "CopulaGAN": 
+      if loadedModelPath is not None:
+        self._model = CopulaGAN.load(loadedModelPath)
+      else:
+        self._model = CopulaGAN(field_transformers = transformer, field_distributions = distribution, field_types= types, epochs= self._epochs)
+      self._model_name = 'cg'
+    elif training.tables[0].model == "TVAE": 
+      if loadedModelPath is not None:
+        self._model = TVAE.load(loadedModelPath)
+      else:
+        self._model = TVAE(field_transformers = transformer, field_types= types, epochs= self._epochs)
+      self._model_name = 'tv'
+    elif training.tables[0].model == "Statistical":
+      self._model = StatisticalGenerator(field_transformers = transformer, field_distributions = distribution, field_types= types)
+      self._model_name = 'st'
+    elif training.tables[0].model == "HMA":
       self._model = HMA1(metadata)
-    else:
-      if training.tables[0].model == "GaussianCopula":
-        if loadedModelPath is not None:
-          self._model = GaussianCopula.load(loadedModelPath)
-        else:
-          self._model = GaussianCopula(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
-        self._model_name = 'gc'
-      elif training.tables[0].model == "CTGAN": 
-        if loadedModelPath is not None:
-          self._model = CTGAN.load(loadedModelPath)
-        else:
-          self._model = CTGAN(anonymize_fields = anonymize, field_transformers = transformer, field_types= types, epochs= self._epochs)
-        self._model_name = 'ct'
-      elif training.tables[0].model == "CopulaGAN": 
-        if loadedModelPath is not None:
-          self._model = CopulaGAN.load(loadedModelPath)
-        else:
-          self._model = CopulaGAN(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types, epochs= self._epochs)
-        self._model_name = 'cg'
-      elif training.tables[0].model == "TVAE": 
-        if loadedModelPath is not None:
-          self._model = TVAE.load(loadedModelPath)
-        else:
-          self._model = TVAE(field_transformers = transformer, field_types= types, epochs= self._epochs)
-        self._model_name = 'tv'
-      elif training.tables[0].model == "Statistical":
-        self._model = StatisticalGenerator(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
-        self._model_name = 'st'        
+      self._model_name = 'hm'
 
     LOGGER.warning(f'Using Model: {self._model}')
 
   def fit(self, tables: dict, new_folder = None):
+    if len(tables) > 1 and self._model_name != 'hm':
+      dc = DataConnector.load(path=self._training.path)
+      joined_table = dc.join_table(self._training, tables)
+      joined_table = joined_table.drop_duplicates(subset=['player_api_id'], keep='first')
+      self._col_names = joined_table.columns.to_list()
+      tables = {'merged': joined_table}
+
     data = tables
 
     columns = []
@@ -84,6 +92,7 @@ class Generator:
         data = data.sample(n = int(len(data) * self._training.dataFactor))
     else:
       #Reduction in dataset only. Debugging only. Hardcodeing for given Dataset:
+      #TODO: Remove fakerr cols. But if removing here, problem with HMA metadata. Thus keep gen. these cols but remove them after
       try:
         data['player'] = tables['player'].sample(n=100)
         boolean_series = tables['player_attributes'].player_api_id.isin(data['player'].player_api_id)
@@ -99,14 +108,18 @@ class Generator:
 
     self._model.fit(data)
     self._model.save(self._training.temp_folder_path + "\\model.pkl")
+    return self._col_names
 
   def sample(self, count: int, column_names):
+    if self._col_names != None:
+      column_names = self._col_names
+
     LOGGER.warning("start sampling of data")
     df_faker = FakerFactory.apply(self._anonymize, num_rows = count)
     print('Generating rows: ' + str(count))
     df_gen = self._model.sample(num_rows = count)
+    print(df_gen)
 
-    #TODO: Hier fehlt auch wieder die Unterscheidung zwischen multi und single
     if type(column_names) == list:
       df = pd.concat([df_gen, df_faker], axis=1)
       df = df.reindex(columns=column_names)
@@ -120,6 +133,8 @@ class Generator:
             
             for f_cols in faker_cols:
               faker_df[f_cols] = df_faker[f_cols]
+
+            df_gen[table].drop(columns=faker_cols, inplace=True)
 
             result[table] = pd.concat([df_gen[table], faker_df], axis=1)
             result[table] = result[table].reindex(columns=cols)
@@ -153,7 +168,7 @@ class Generator:
     if generated:
       gen_app = "_gen"
 
-    if tables == isinstance(tables, pd.DataFrame):
+    if isinstance(tables, pd.DataFrame):
       t_name = path_split[-1].split(".")[0]
       if appen != "":
         t_name += "_" + str(appen)
@@ -171,16 +186,13 @@ class Generator:
     return None
 
   def _get_settings(self):
-    table_distribution = {}
-    table_transformer = {}
-    table_anonymize = {}
-    table_field_types = {}
+    field_distribution = {}
+    field_transformer = {}
+    field_anonymize = {}
+    field_types = {}
 
     for table in self._training.tables:
-      field_distribution = {}
-      field_transformer = {}
-      field_anonymize = {}
-      field_types = {}
+
 
       for attr in table.attributes:
         if attr.field_anonymize is not None:
@@ -195,18 +207,10 @@ class Generator:
         if attr.dtype is not None:
           field_types[attr.name] = {'type': attr.dtype}
 
-      table_distribution[table.name] = field_distribution
-      table_transformer[table.name] = field_transformer
-      table_anonymize[table.name] = field_anonymize
-      table_field_types[table.name] = field_types
+    LOGGER.warning(f"Table_distribution: {field_distribution}")
+    LOGGER.warning(f"Table_transformer: {field_transformer}")
+    LOGGER.warning(f"Table_anonymize: {field_anonymize}")
+    LOGGER.warning(f"Table_types: {field_types}")
 
-    LOGGER.warning(f"Table_distribution: {table_distribution}")
-    LOGGER.warning(f"Table_transformer: {table_transformer}")
-    LOGGER.warning(f"Table_anonymize: {table_anonymize}")
-    LOGGER.warning(f"Table_types: {table_field_types}")
-
-    if len(self._training.tables) > 1:
-      return (table_distribution, table_transformer, table_anonymize, table_field_types)
-    else:
-      return (field_distribution, field_transformer, field_anonymize, field_types)
+    return (field_distribution, field_transformer, field_anonymize, field_types)
 

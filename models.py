@@ -28,6 +28,7 @@ class Training(BaseModel):
   epoch: Optional[float]
   dataFactor: Optional[float] # Wie viele Daten betracht werden sollen [0.01, 1]
   dataAmount: Optional[float] # Wie viele Daten generiert werden sollen
+  joined: Optional[str] = False
   
   temp_folder_path: str = Optional[str]
   train_tables : Optional[List[str]] #TODO: Ugly workarround da es einfach mit _ davor nicht geht und zuweisungen...
