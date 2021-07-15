@@ -3,7 +3,7 @@ import os
 
 from fastapi import FastAPI, HTTPException, Query
 from typing import List
-from models import Training, Table
+from models import Training, Table, Attribute
 from pathlib import Path
 
 from connector import DataConnector
@@ -70,45 +70,21 @@ async def start_training(training: Training):
       training.path_gen = training.path
       return training
 
-    dc = DataConnector.load(path=training.path)
-    tables, metadata = dc.get_training_data(training)
+    if len(training.tables) > 1 and training.tables[0].model != "HMA":
+      return joined_training(training)
+    else:
+      dt = datetime.now()
+      path = Path(training.path)
+      folder_name = str(dt.strftime("%d.%m, %H.%M")) + 'Uhr ' + path.stem
+      new_dir = Path(str(path.parent), folder_name)
+      new_dir.mkdir(parents=True, exist_ok=True)
 
-    dt = datetime.now()
-    path = Path(training.path)
-    folder_name = str(dt.strftime("%d.%m, %H.%M")) + 'Uhr ' + path.stem
-    new_dir = Path(str(path.parent), folder_name)
-    new_dir.mkdir(parents=True, exist_ok=True)
+      training.temp_folder_path = str(new_dir)
+      with open(str(new_dir) + '\\settings.json', 'w+') as outfile:
+        json.dump(training.dict(), outfile)
 
-    training.temp_folder_path = str(new_dir)
-    #copyfile(path, str(new_dir) + '\\' + path.name)
-    with open(str(new_dir) + '\\settings.json', 'w+') as outfile:
-      json.dump(training.dict(), outfile)
-    
-    gen = Generator(training, metadata)
-    gen.fit(tables, new_folder=folder_name)
+      return normal_training(training, folder_name=folder_name)
 
-    real_data = dc.get_tables()
-    length = 100#int(len(real_data[training.tables[0].name]) * training.dataAmount)
-
-    new_data = gen.sample(length, dc.get_column_names())
-
-    # Post Processing:
-    try:
-      real_data = dc.get_tables()
-
-      for table_name, table_df in new_data.items():
-        new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
-    except Exception as e:
-      raise Exception(detail="Generierung: Konnte post processing nicht anwenden. Error: " + str(e))
-
-    gen.save(new_data, new_folder=folder_name)
-
-    if debug:
-      for size in sizes:
-        new_data = gen.sample(size, dc.get_column_names())
-        gen.save(new_data, size)      
-
-    return training
   #except Exception as e:
   #  raise HTTPException(status_code=404, detail="Generierung: " + str(e)) 
 
@@ -230,7 +206,7 @@ async def load_model(save_file: str):
 
 @app.get("/loadedModel/{load_path:path}/{amount:float}")
 async def start_evaluation(load_path: str, amount: float):
-#  try:
+  try:
     with open(load_path,) as jfile:    
       jload = json.load(jfile)
     
@@ -253,8 +229,83 @@ async def start_evaluation(load_path: str, amount: float):
 
     gen.save(new_data, [len(fileCount)], str(parentPath), absolut=True)
     return True
-#  except Exception as e:
-#    raise HTTPException(status_code=404, detail="LoadedModel: " + str(e)) 
+  except Exception as e:
+    raise HTTPException(status_code=404, detail="LoadedModel: " + str(e)) 
+
+def joined_training(training: Training):
+  dt = datetime.now()
+  path = Path(training.path)
+  folder_name = str(dt.strftime("%d.%m, %H.%M")) + 'Uhr ' + path.stem
+  new_dir = Path(str(path.parent), folder_name)
+  new_dir.mkdir(parents=True, exist_ok=True)
+
+  training.temp_folder_path = str(new_dir)
+
+  dc = DataConnector.load(path=training.path)
+  tables, metadata = dc.get_training_data(training)
+  df = dc.join_table(training, tables)
+
+  training.path = str(new_dir) + '\\' + str(path.stem) + '.csv'
+  df.to_csv(path_or_buf=training.path, index=False, encoding='utf-8-sig')
+  training = change_training(training)
+
+  with open(str(new_dir) + '\\settings.json', 'w+') as outfile:
+    json.dump(training.dict(), outfile)
+
+  print(df)
+  print('##'*90)
+  normal_training(training, None)
+  return training
+
+def change_training(training: Training):
+  if len(training.tables) > 1 and training.tables[0].model != 'HMA':
+    p = Path(training.path)
+    
+    attr_name = []
+    attributes_list = []
+    for table in training.tables:
+      for attr in table.attributes:
+        if attr.name not in attr_name:
+          attr_name.append(attr.name)
+          attributes_list.append(Attribute(**{'name': attr.name, 'dtype': attr.dtype, 'field_distribution': attr.field_distribution, 'field_transformer': attr.field_transformer, 'field_anonymize': attr.field_anonymize}))
+
+    training.tables = [Table(**{'name': p.stem, 'attributes': attributes_list, 'model': training.tables[0].model})]
+
+  return training
+
+def normal_training(training, folder_name):
+  dc = DataConnector.load(path=training.path)
+  tables, metadata = dc.get_training_data(training)
+  
+  gen = Generator(training, metadata)
+
+  gen.fit(tables, new_folder=folder_name)
+
+  real_data = dc.get_tables()
+  length = 100#int(len(real_data[training.tables[0].name]) * training.dataAmount)
+
+  new_data = gen.sample(length, dc.get_column_names())
+
+  # Post Processing:
+  try:
+    real_data = dc.get_tables()
+
+    for table_name, table_df in new_data.items():
+      new_data[table_name] = PostGenFactory.apply(real_data[table_name], table_df, training, table_name)
+  except Exception as e:
+    raise Exception(detail="Generierung: Konnte post processing nicht anwenden. Error: " + str(e))
+
+  gen.save(new_data, new_folder=folder_name)
+
+  if debug:
+    for size in sizes:
+      new_data = gen.sample(size, dc.get_column_names())
+      gen.save(new_data, size)      
+
+  return training
+
+
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

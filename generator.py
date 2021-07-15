@@ -11,6 +11,8 @@ from sdv import Metadata
 from models import Training
 from fakers import FakerFactory
 from generators import StatisticalGenerator
+from pathlib import Path
+
 
 import pandas as pd
 import logging
@@ -36,36 +38,36 @@ class Generator:
     self._anonymize = anonymize
     self._epochs = int(training.epoch)
 
-    if len(self._training.tables) > 1:
+    if training.tables[0].model == "GaussianCopula":
+      if loadedModelPath is not None:
+        self._model = GaussianCopula.load(loadedModelPath)
+      else:
+        self._model = GaussianCopula(field_transformers = transformer, field_distributions = distribution, field_types= types)
+      self._model_name = 'gc'
+    elif training.tables[0].model == "CTGAN": 
+      if loadedModelPath is not None:
+        self._model = CTGAN.load(loadedModelPath)
+      else:
+        self._model = CTGAN(field_transformers = transformer, field_types= types, epochs= self._epochs)
+      self._model_name = 'ct'
+    elif training.tables[0].model == "CopulaGAN": 
+      if loadedModelPath is not None:
+        self._model = CopulaGAN.load(loadedModelPath)
+      else:
+        self._model = CopulaGAN(field_transformers = transformer, field_distributions = distribution, field_types= types, epochs= self._epochs)
+      self._model_name = 'cg'
+    elif training.tables[0].model == "TVAE": 
+      if loadedModelPath is not None:
+        self._model = TVAE.load(loadedModelPath)
+      else:
+        self._model = TVAE(field_transformers = transformer, field_types= types, epochs= self._epochs)
+      self._model_name = 'tv'
+    elif training.tables[0].model == "Statistical":
+      self._model = StatisticalGenerator(field_transformers = transformer, field_distributions = distribution, field_types= types)
+      self._model_name = 'st'
+    elif training.tables[0].model == "HMA":
       self._model = HMA1(metadata)
-    else:
-      if training.tables[0].model == "GaussianCopula":
-        if loadedModelPath is not None:
-          self._model = GaussianCopula.load(loadedModelPath)
-        else:
-          self._model = GaussianCopula(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
-        self._model_name = 'gc'
-      elif training.tables[0].model == "CTGAN": 
-        if loadedModelPath is not None:
-          self._model = CTGAN.load(loadedModelPath)
-        else:
-          self._model = CTGAN(anonymize_fields = anonymize, field_transformers = transformer, field_types= types, epochs= self._epochs)
-        self._model_name = 'ct'
-      elif training.tables[0].model == "CopulaGAN": 
-        if loadedModelPath is not None:
-          self._model = CopulaGAN.load(loadedModelPath)
-        else:
-          self._model = CopulaGAN(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types, epochs= self._epochs)
-        self._model_name = 'cg'
-      elif training.tables[0].model == "TVAE": 
-        if loadedModelPath is not None:
-          self._model = TVAE.load(loadedModelPath)
-        else:
-          self._model = TVAE(field_transformers = transformer, field_types= types, epochs= self._epochs)
-        self._model_name = 'tv'
-      elif training.tables[0].model == "Statistical":
-        self._model = StatisticalGenerator(anonymize_fields = anonymize, field_transformers = transformer, field_distributions = distribution, field_types= types)
-        self._model_name = 'st'        
+      self._model_name = 'hm'
 
     LOGGER.warning(f'Using Model: {self._model}')
 
@@ -79,9 +81,11 @@ class Generator:
 
     if len(tables) == 1:
       data = tables[list(tables.keys())[0]].copy() #Da nur eine Tabelle kein dict von Tabellen übergeben
-      data.drop(columns=columns, inplace=True)
       if self._training.dataFactor != 1:
         data = data.sample(n = int(len(data) * self._training.dataFactor))
+
+      self.save(data, new_folder=new_folder, generated=False)
+      data.drop(columns=columns, inplace=True)
     else:
       #Reduction in dataset only. Debugging only. Hardcodeing for given Dataset:
       try:
@@ -91,11 +95,11 @@ class Generator:
         data['player_attributes'] = data['player_attributes'].drop_duplicates(subset=['player_api_id'], keep='first')
       except Exception as e:
         data = tables
+      self.save(data, new_folder=new_folder, generated=False)
+
 
       LOGGER.warning(f"For debugging reason only allow training with 100 or less Datapoints")
       LOGGER.warning(f"Started fitting with {len(data)} data points")
-
-    self.save(data, new_folder=new_folder, generated=False)
 
     self._model.fit(data)
     self._model.save(self._training.temp_folder_path + "\\model.pkl")
@@ -105,6 +109,10 @@ class Generator:
     df_faker = FakerFactory.apply(self._anonymize, num_rows = count)
     print('Generating rows: ' + str(count))
     df_gen = self._model.sample(num_rows = count)
+
+    print('~'*90)
+    print(df_faker)
+    print(column_names)
 
     #TODO: Hier fehlt auch wieder die Unterscheidung zwischen multi und single
     if type(column_names) == list:
@@ -135,8 +143,8 @@ class Generator:
 
   def save(self, tables, appendix = [], new_folder = None, absolut=False, generated=True):
     if absolut == False:
-      path_split = self._training.path.split('/')
-      new_path = "/".join(path_split[:-1])
+      path = Path(self._training.path)
+      new_path = str(path.parent)
 
       if new_folder is not None:
         new_path += '/' + new_folder
@@ -153,8 +161,8 @@ class Generator:
     if generated:
       gen_app = "_gen"
 
-    if tables == isinstance(tables, pd.DataFrame):
-      t_name = path_split[-1].split(".")[0]
+    if isinstance(tables, pd.DataFrame):
+      t_name = path.stem
       if appen != "":
         t_name += "_" + str(appen)
       self._training.path_gen = new_path + "/" + t_name + gen_app + ".csv"

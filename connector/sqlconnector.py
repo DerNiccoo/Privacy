@@ -18,6 +18,7 @@ class SQLConnector(BaseConnector):
   _pk_relation = None
   _fk_relation = None
   _table_columns = {}
+  _metadata = None 
 
   def __init__(self, path : str):
     super().__init__(path)
@@ -227,4 +228,41 @@ class SQLConnector(BaseConnector):
 
     con.close()
 
+    return df
+
+  def join_table(self, training, tables):
+    if self._metadata == None:
+      _, metadata = self.get_training_data(training)
+      metadata = metadata.to_dict()
+      self._metadata = metadata
+    else:
+      metadata = self._metadata
+
+    df = pd.DataFrame()
+    added_tables = []
+
+    columns = {}
+    for key, value in tables.items():
+      columns[key] = value.columns.tolist()
+
+    for key, table in metadata['tables'].items():
+      for key_at, attr in table['fields'].items():
+        if 'ref' in attr:
+          intersec = list(set(columns[key]).intersection(columns[attr['ref']['table']]))
+          intersec.remove(attr['ref']['field'])
+          tables[key].drop(columns=intersec, inplace=True)
+
+          if key in added_tables:
+            df.join(tables[attr['ref']['table']].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            added_tables.append(attr['ref']['table'])
+          elif attr['ref']['table'] in added_tables:
+            df.join(tables[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            added_tables.append(key)
+          else:
+            df = tables[attr['ref']['table']].join(tables[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_' + attr['ref']['table'], rsuffix='_' + key)
+            added_tables.append(key)
+            added_tables.append(attr['ref']['table'])
+
+    if 'player_api_id' in df.columns.to_list():
+      df = df.drop_duplicates(subset=['player_api_id'], keep='first')
     return df
