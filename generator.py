@@ -66,7 +66,12 @@ class Generator:
       self._model = StatisticalGenerator(field_transformers = transformer, field_distributions = distribution, field_types= types)
       self._model_name = 'st'
     elif training.tables[0].model == "HMA":
-      self._model = HMA1(metadata)
+      if loadedModelPath is not None:
+        self._model = HMA1.load(loadedModelPath)
+      else:
+        self._model = self._model = HMA1(metadata)
+      print(metadata.to_dict())
+      
       self._model_name = 'hm'
 
     LOGGER.warning(f'Using Model: {self._model}')
@@ -82,19 +87,19 @@ class Generator:
     if len(tables) == 1:
       data = tables[list(tables.keys())[0]].copy() #Da nur eine Tabelle kein dict von Tabellen übergeben
       if self._training.dataFactor != 1:
-        data = data.sample(n = int(len(data) * self._training.dataFactor))
+        data = data.sample(n = 1000)#int(len(data) * self._training.dataFactor))
 
       self.save(data, new_folder=new_folder, generated=False)
       data.drop(columns=columns, inplace=True)
     else:
       #Reduction in dataset only. Debugging only. Hardcodeing for given Dataset:
-      try:
-        data['player'] = tables['player'].sample(n=100)
-        boolean_series = tables['player_attributes'].player_api_id.isin(data['player'].player_api_id)
-        data['player_attributes'] = tables['player_attributes'][boolean_series]
-        data['player_attributes'] = data['player_attributes'].drop_duplicates(subset=['player_api_id'], keep='first')
-      except Exception as e:
-        data = tables
+      #try:
+      #  data['player'] = tables['player'].sample(n=1000)
+      #  boolean_series = tables['player_attributes'].player_api_id.isin(data['player'].player_api_id)
+      #  data['player_attributes'] = tables['player_attributes'][boolean_series]
+      #  data['player_attributes'] = data['player_attributes'].drop_duplicates(subset=['player_api_id'], keep='first')
+      #except Exception as e:
+      data = tables
       self.save(data, new_folder=new_folder, generated=False)
 
 
@@ -107,12 +112,10 @@ class Generator:
   def sample(self, count: int, column_names):
     LOGGER.warning("start sampling of data")
     df_faker = FakerFactory.apply(self._anonymize, num_rows = count)
-    print('Generating rows: ' + str(count))
+    LOGGER.warning('Generating rows: ' + str(count))
     df_gen = self._model.sample(num_rows = count)
+    print(df_gen)
 
-    print('~'*90)
-    print(df_faker)
-    print(column_names)
 
     #TODO: Hier fehlt auch wieder die Unterscheidung zwischen multi und single
     if type(column_names) == list:
@@ -134,7 +137,7 @@ class Generator:
           else:
             result[table] = df_gen[table]
         except KeyError as e:
-          print('Table ' + str(e) + ' not generated. This isnt always a error')
+          LOGGER.warning('Table ' + str(e) + ' not generated. This isnt always a error')
 
     if len(self._training.tables) == 1:
       return {self._training.tables[0].name: df}
@@ -174,7 +177,7 @@ class Generator:
           t_name += "_" + str(appen)
         self._training.path_gen = new_path + "/" + t_name + gen_app + ".csv"
         LOGGER.warning(f'Saving Data to: {self._training.path_gen}')
-        t_value.to_csv(path_or_buf=self._training.path_gen, index=False, encoding='utf-8-sig')
+        t_value.to_csv(path_or_buf=self._training.path_gen)
 
     return None
 

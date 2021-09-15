@@ -20,11 +20,36 @@ import random
 
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI()
+tags_metadata = [
+    {
+        "name": "suggestions",
+        "description": "Get all suggestions for a specific dataset.",
+    },
+    {
+        "name": "training",
+        "description": "Start the training process with the specified settings.",
+    },
+    {
+        "name": "evaluate",
+        "description": "Compare two datasets with multiple evaluators.",
+    },
+    {
+        "name": "load",
+        "description": "Generation of further data via a previously learned model.",
+    },
+    {
+        "name": "debug",
+        "description": "Endpoints for development purposes only.",
+    },
+]
+
+app = FastAPI(openapi_tags=tags_metadata)
 
 origins = [
     "https://localhost:4200",
     "http://localhost:4200",
+    "http://127.0.0.1:4200",
+    "https://127.0.0.1:4200",
     "https://0.0.0.0:4200",
     "http://0.0.0.0:4200",
     "https://172.24.105.27:4200",
@@ -42,7 +67,7 @@ app.add_middleware(
 debug = False
 sizes = [50, 100, 311, 622, 3110, 6220, 31100]
 
-@app.get("/schema/{db_path:path}")
+@app.get("/schema/{db_path:path}", tags=["suggestions"])
 async def get_database_schema(db_path: str):  
   #try:
     try:
@@ -63,7 +88,7 @@ async def get_database_schema(db_path: str):
   #except Exception as e:
   #  raise HTTPException(status_code=404, detail="Schema: " + str(e)) 
 
-@app.post("/training/")
+@app.post("/training/", tags=["training"])
 async def start_training(training: Training):
   #try:
     if '_gen' in training.tables[0].name:
@@ -88,7 +113,7 @@ async def start_training(training: Training):
   #except Exception as e:
   #  raise HTTPException(status_code=404, detail="Generierung: " + str(e)) 
 
-@app.post("/evaluate/")
+@app.post("/evaluate/", tags=["evaluate"])
 async def start_evaluation(training: Training):
   #try:
     p = Path(training.path)
@@ -102,10 +127,10 @@ async def start_evaluation(training: Training):
   #except Exception as e:
  #  raise HTTPException(status_code=404, detail="Evaluation: " + str(e)) 
 
-@app.post("/evaluate/all")
+@app.post("/evaluate/all", tags=["debug"])
 async def start_evaluation_all(training: Training):
   folders = [
-      r'E:\GitHub Repos\Masterarbeit\Evaluation_2\HR\11.06, 08.53Uhr\HRD.csv',
+      r'E:\GitHub Repos\Masterarbeit\Notebooks\24.07, 12.12Uhr soc\soc.csv',
   ]
 
   for f_folder in folders:
@@ -133,7 +158,7 @@ async def start_evaluation_all(training: Training):
 
   return results
 
-@app.post("/debug")
+@app.post("/debug", tags=["debug"])
 async def start_debug(training: Training):
   generators = ['TVAE', 'GaussianCopula', 'CTGAN', 'CopulaGAN']
   #sizes = [50, 100, 311, 622, 3110, 6220, 31100]
@@ -186,12 +211,12 @@ async def start_debug(training: Training):
 
   return results
 
-@app.get("/reset")
+@app.get("/reset", tags=["debug"])
 async def hard_reset():
   with open("reset.txt", "w+") as f:
     f.write(str(random.getrandbits(128)))
 
-@app.get("/load/{save_file:path}")
+@app.get("/load/{save_file:path}", tags=["load"])
 async def load_model(save_file: str):
   with open(save_file,) as jfile:    
     jload = json.load(jfile)
@@ -204,8 +229,8 @@ async def load_model(save_file: str):
   return {"db_path": save_file, "table_order": table_order, "pk_relation": pk_relation, "fk_relation": fk_relation, 'metadata': training, 'suggestions': []}
 
 
-@app.get("/loadedModel/{load_path:path}/{amount:float}")
-async def start_evaluation(load_path: str, amount: float):
+@app.get("/loadedModel/{load_path:path}/{amount:float}", tags=["load"])
+async def start_generating_new_data(load_path: str, amount: float):
   try:
     with open(load_path,) as jfile:    
       jload = json.load(jfile)
@@ -243,6 +268,7 @@ def joined_training(training: Training):
 
   dc = DataConnector.load(path=training.path)
   tables, metadata = dc.get_training_data(training)
+
   df = dc.join_table(training, tables)
 
   training.path = str(new_dir) + '\\' + str(path.stem) + '.csv'
@@ -252,8 +278,6 @@ def joined_training(training: Training):
   with open(str(new_dir) + '\\settings.json', 'w+') as outfile:
     json.dump(training.dict(), outfile)
 
-  print(df)
-  print('##'*90)
   normal_training(training, None)
   return training
 
@@ -282,7 +306,7 @@ def normal_training(training, folder_name):
   gen.fit(tables, new_folder=folder_name)
 
   real_data = dc.get_tables()
-  length = 100#int(len(real_data[training.tables[0].name]) * training.dataAmount)
+  length = 1000#int(len(real_data[training.tables[0].name]) * training.dataAmount)
 
   new_data = gen.sample(length, dc.get_column_names())
 

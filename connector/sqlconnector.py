@@ -36,6 +36,7 @@ class SQLConnector(BaseConnector):
 
     LOGGER.debug('Executing get_schema')
 
+    print(self.path)
     con = sqlite3.connect(self.path)
 
     rows = con.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -94,6 +95,20 @@ class SQLConnector(BaseConnector):
 
     return (tables, pk_relation, fk_relation)
 
+  def _add_debug(self, con, player_df):
+    player_attr_df = pd.read_sql_query('SELECT * FROM player_attributes', con)  #TODO: Delete this+
+    player_attr_df = player_attr_df.drop_duplicates(subset=['player_api_id'], keep='first')
+
+    cols = ['crossing', 'finishing', 'heading_accuracy', 'short_passing', 'volleys', 'dribbling', 'curve', 'free_kick_accuracy', 'long_passing', 'ball_control', 'acceleration', 'sprint_speed', 'agility', 'reactions', 'balance', 'shot_power', 'jumping', 'stamina', 'strength', 'long_shots', 'aggression', 'interceptions', 'positioning', 'vision', 'penalties', 'marking', 'standing_tackle', 'sliding_tackle', 'gk_diving', 'gk_handling', 'gk_kicking', 'gk_positioning', 'gk_reflexes']
+
+    def calculate(x):
+      return x.mean()
+
+    player_attr_df['calc_rating'] = player_attr_df[cols].apply(lambda x: calculate(x), axis=1)
+    player_attr_df['rest_rating'] = (player_attr_df['overall_rating'] - player_attr_df['calc_rating']).abs()
+
+    return player_df.merge(player_attr_df[['player_api_id', 'overall_rating', 'calc_rating', 'rest_rating']], how='left', on='player_api_id')
+
   def _get_metadata(self):
     if self._tables is None or self._pk_relation is None or self._fk_relation is None:
       self._get_schema()
@@ -103,6 +118,9 @@ class SQLConnector(BaseConnector):
 
     for table in self._tables:
       df = pd.read_sql_query('SELECT * FROM ' + table + ' LIMIT 5', con)
+
+      #if table == 'player': #TODO: Delete this+
+      #  df = self._add_debug(con, df)
 
       metadata.add_table(
         name=table,
@@ -163,6 +181,10 @@ class SQLConnector(BaseConnector):
         continue
 
       df = pd.read_sql_query('SELECT '+ self._get_selected_attributes(trainingsTables[table]) +' FROM ' + table, con)
+      #df = pd.read_sql_query('SELECT * FROM ' + table, con) #TODO Delete this
+      #if table == 'player': #TODO: Delete this+
+      #  df = self._add_debug(con, df)
+
       for col in df.columns.tolist():
         if df[col].dtypes == 'object':
           df[col].fillna('', inplace=True)
@@ -176,6 +198,7 @@ class SQLConnector(BaseConnector):
         data=df,
         primary_key=pk_relation[table][0] #TODO: Könnte sein, dass es mehr prim keys gibt. Dann schauen.
       )
+      print(f"DEBUG: Table: {table} with pk: {pk_relation[table][0]}")
 
       #TODO: FK Relation zu den Metadaten hinzufügen
       for fk_rel in fk_relation[table]:
@@ -193,6 +216,8 @@ class SQLConnector(BaseConnector):
               foreign_key=fk_rel["dest"]
             )
 
+            print(f"DEBUG: Relation: parent: {fk_rel['table']} child: {table} with pk: {fk_rel['dest']}")
+
           else:
             LOGGER.warning("Missing attr. for adding relations to train")
         else:
@@ -201,6 +226,22 @@ class SQLConnector(BaseConnector):
       #TODO: Vergleichen ob die ausgewählten Trainingssettings passen
 
     con.close()
+    '''
+    metadata = Metadata()
+    metadata.add_table(
+      name='player',
+      data=tables['player'],
+      primary_key='player_api_id'
+    )
+
+    metadata.add_table(
+      name='player_attributes',
+      data=tables['player_attributes'],
+      primary_key='id',
+      parent='player',
+      foreign_key='player_api_id'
+    )'''
+
     return (tables, metadata)
 
   def _get_tables(self, replace_na: bool = True):
@@ -216,6 +257,8 @@ class SQLConnector(BaseConnector):
   def _get_dataframe(self, tableName, replace_na: bool = True):
     con = sqlite3.connect(self.path)
     df = pd.read_sql_query('SELECT * FROM ' + tableName, con)
+    #if tableName == 'player': #TODO: Delete this+
+    #  df = self._add_debug(con, df)
 
     self._table_columns[tableName] = list(df.columns)
 
@@ -253,10 +296,10 @@ class SQLConnector(BaseConnector):
           tables[key].drop(columns=intersec, inplace=True)
 
           if key in added_tables:
-            df.join(tables[attr['ref']['table']].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            df = df.join(tables[attr['ref']['table']].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
             added_tables.append(attr['ref']['table'])
           elif attr['ref']['table'] in added_tables:
-            df.join(tables[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
+            df = df.join(tables[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_caller', rsuffix='_other')
             added_tables.append(key)
           else:
             df = tables[attr['ref']['table']].join(tables[key].set_index(attr['ref']['field']), on=attr['ref']['field'], lsuffix='_' + attr['ref']['table'], rsuffix='_' + key)
@@ -265,4 +308,5 @@ class SQLConnector(BaseConnector):
 
     if 'player_api_id' in df.columns.to_list():
       df = df.drop_duplicates(subset=['player_api_id'], keep='first')
+
     return df

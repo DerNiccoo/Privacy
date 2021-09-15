@@ -95,8 +95,12 @@ class Similarity(BaseEval):
 
     error = []
     for col in real_data.columns.tolist():
-        quantile_fake = self._get_col_quantile(df_fake_c, col, buckets)
-        quantile_real = self._get_col_quantile(df_real_c, col, buckets)
+        try:
+          quantile_fake = self._get_col_quantile(df_fake_c, col, buckets)
+          quantile_real = self._get_col_quantile(df_real_c, col, buckets)
+        except Exception as e:
+          LOGGER.warning(f'Problem with: {col}')
+          continue
 
         dev = 0
         for q_f, q_r in zip(quantile_fake, quantile_real):

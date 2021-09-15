@@ -37,6 +37,7 @@ class Evaluator:
     return t_anon
 
   def _join_tables(self, tables_gen, tables_og):
+    print(self._training.path)
     dc = DataConnector.load(path=self._training.path)
     _, metadata = dc.get_training_data(self._training)
     metadata = metadata.to_dict()
@@ -71,8 +72,8 @@ class Evaluator:
       path_split = self._training.path.split('/')
       new_path = "/".join(path_split[:-1])
     else:
-        path_split = self._training.path_gen.split('/')
-        new_path = "/".join(path_split[:-1])
+      path_split = self._training.path_gen.split('/')
+      new_path = "/".join(path_split[:-1])
 
     field_anonymize = self._get_anonymized_fields()
 
@@ -81,29 +82,46 @@ class Evaluator:
     tables_gen = {}
     tables_og = {}
 
+    
     for table in self._training.tables:
       real_table = pd.read_csv(new_path + "/" + table.name + ".csv")
       synthetic_table = pd.read_csv(new_path + "/" + table.name + "_gen.csv")
 
-      real = real_table.drop(field_anonymize[table.name], axis=1)
-      synthetic = synthetic_table.drop(field_anonymize[table.name], axis=1)
+      tables_gen[table.name] = synthetic_table
+      tables_og[table.name] = real_table
 
-      tables_gen[table.name] = synthetic
-      tables_og[table.name] = real
+      #real = real_table.drop(field_anonymize[table.name], axis=1)
+      #synthetic = synthetic_table.drop(field_anonymize[table.name], axis=1)
+      if table.name == 'player':
+        real = real_table.drop(['player_name', 'id', 'player_api_id', 'player_fifa_api_id', 'hurt'], axis=1)
+        synthetic = synthetic_table.drop(['player_name', 'id', 'player_api_id', 'player_fifa_api_id', 'hurt'], axis=1)
+      else:
+        real = real_table.drop(['id', 'player_api_id', 'player_fifa_api_id'], axis=1)
+        synthetic = synthetic_table.drop(['id', 'player_api_id', 'player_fifa_api_id'], axis=1)
+
+      #tables_gen[table.name] = synthetic
+      #tables_og[table.name] = real
 
       for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
         print(method)
-        try:
-          results = method.compute(real, synthetic)
-          evaluation_result.extend(results)
-        except:
-          LOGGER.warning(f'Error compute eval.{method}')
+        #try:
+        results = method.compute(real, synthetic)
+        evaluation_result.extend(results)
+        #except:
+        #  LOGGER.warning(f'Error compute eval.{method}')
 
     if len(self._training.tables) > 1:
       real, synthetic = self._join_tables(tables_gen, tables_og)
-      eval = EvalFactory.create('backgroundanonymity', {})
-      results = eval.compute(real, synthetic)
-      evaluation_result.extend(results)
+      real = real.drop(['id_caller', 'player_api_id', 'player_fifa_api_id_caller', 'id_other', 'player_fifa_api_id_other'], axis=1)
+      synthetic = synthetic.drop(['id_caller', 'player_api_id', 'player_fifa_api_id_caller', 'id_other', 'player_fifa_api_id_other'], axis=1)
+      for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
+        print(method)
+        #try:
+        results = method.compute(real, synthetic)
+        evaluation_result.extend(results)
+      #eval = EvalFactory.create('backgroundanonymity', {})
+      #results = eval.compute(real, synthetic)
+      #evaluation_result.extend(results)
 
     return evaluation_result
 

@@ -43,7 +43,6 @@ class FakerFactory:
 
       data.append(row_data)
     
-    print(columns)
     return pd.DataFrame(data, columns=columns)
 
   @classmethod
