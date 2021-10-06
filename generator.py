@@ -81,13 +81,14 @@ class Generator:
 
     columns = []
 
-    for key, value in self._anonymize.items():
-      columns.append(key)
+    for key, value in self._anonymize.items():  # Hier müsste man prüfen, ob es Faker+ ist wenn ja: NICHT entfernen, da es sonst nicht mitgelernt wird!
+      if '+' not in value:  # Faker+ nicht löschen!
+        columns.append(key)
 
     if len(tables) == 1:
       data = tables[list(tables.keys())[0]].copy() #Da nur eine Tabelle kein dict von Tabellen übergeben
       if self._training.dataFactor != 1:
-        data = data.sample(n = 1000)#int(len(data) * self._training.dataFactor))
+        data = data.sample(int(len(data) * self._training.dataFactor)) #data.sample(n = 1000)
 
       self.save(data, new_folder=new_folder, generated=False)
       data.drop(columns=columns, inplace=True)
@@ -111,16 +112,18 @@ class Generator:
 
   def sample(self, count: int, column_names):
     LOGGER.warning("start sampling of data")
-    df_faker = FakerFactory.apply(self._anonymize, num_rows = count)
     LOGGER.warning('Generating rows: ' + str(count))
     df_gen = self._model.sample(num_rows = count)
-    print(df_gen)
+    df_faker, faker_plus_dict, faker_plus_cols = FakerFactory.apply(self._anonymize, num_rows = count, df_gen = df_gen)
 
 
     #TODO: Hier fehlt auch wieder die Unterscheidung zwischen multi und single
     if type(column_names) == list:
       df = pd.concat([df_gen, df_faker], axis=1)
       df = df.reindex(columns=column_names)
+
+      for faker_col in faker_plus_cols:
+        df = df.replace({faker_col: faker_plus_dict})
     else:
       result = {}
       for table, cols in column_names.items():

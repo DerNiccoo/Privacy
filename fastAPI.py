@@ -306,7 +306,7 @@ def normal_training(training, folder_name):
   gen.fit(tables, new_folder=folder_name)
 
   real_data = dc.get_tables()
-  length = 1000#int(len(real_data[training.tables[0].name]) * training.dataAmount)
+  length = int(len(real_data[training.tables[0].name]) * training.dataAmount) # 1000
 
   new_data = gen.sample(length, dc.get_column_names())
 
@@ -327,9 +327,6 @@ def normal_training(training, folder_name):
       gen.save(new_data, size)      
 
   return training
-
-
-
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

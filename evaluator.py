@@ -90,14 +90,15 @@ class Evaluator:
       tables_gen[table.name] = synthetic_table
       tables_og[table.name] = real_table
 
-      #real = real_table.drop(field_anonymize[table.name], axis=1)
-      #synthetic = synthetic_table.drop(field_anonymize[table.name], axis=1)
-      if table.name == 'player':
-        real = real_table.drop(['player_name', 'id', 'player_api_id', 'player_fifa_api_id', 'hurt'], axis=1)
-        synthetic = synthetic_table.drop(['player_name', 'id', 'player_api_id', 'player_fifa_api_id', 'hurt'], axis=1)
-      else:
-        real = real_table.drop(['id', 'player_api_id', 'player_fifa_api_id'], axis=1)
-        synthetic = synthetic_table.drop(['id', 'player_api_id', 'player_fifa_api_id'], axis=1)
+      real = real_table.drop(field_anonymize[table.name], axis=1)
+      synthetic = synthetic_table.drop(field_anonymize[table.name], axis=1)
+      
+      #if table.name == 'player':
+      #  real = real_table.drop(['player_name', 'id', 'player_api_id', 'player_fifa_api_id', 'hurt'], axis=1)
+      #  synthetic = synthetic_table.drop(['player_name', 'id', 'player_api_id', 'player_fifa_api_id', 'hurt'], axis=1)
+      #else:
+      #  real = real_table.drop(['id', 'player_api_id', 'player_fifa_api_id'], axis=1)
+      #  synthetic = synthetic_table.drop(['id', 'player_api_id', 'player_fifa_api_id'], axis=1)
 
       #tables_gen[table.name] = synthetic
       #tables_og[table.name] = real
@@ -112,16 +113,16 @@ class Evaluator:
 
     if len(self._training.tables) > 1:
       real, synthetic = self._join_tables(tables_gen, tables_og)
-      real = real.drop(['id_caller', 'player_api_id', 'player_fifa_api_id_caller', 'id_other', 'player_fifa_api_id_other'], axis=1)
-      synthetic = synthetic.drop(['id_caller', 'player_api_id', 'player_fifa_api_id_caller', 'id_other', 'player_fifa_api_id_other'], axis=1)
+      #real = real.drop(['id_caller', 'player_api_id', 'player_fifa_api_id_caller', 'id_other', 'player_fifa_api_id_other'], axis=1)
+      #synthetic = synthetic.drop(['id_caller', 'player_api_id', 'player_fifa_api_id_caller', 'id_other', 'player_fifa_api_id_other'], axis=1)
       for method in self._methods: # Entfernen der Faker erstellten Attribute, da diese offensichtlich random sind
         print(method)
         #try:
         results = method.compute(real, synthetic)
         evaluation_result.extend(results)
-      #eval = EvalFactory.create('backgroundanonymity', {})
-      #results = eval.compute(real, synthetic)
-      #evaluation_result.extend(results)
+      eval = EvalFactory.create('backgroundanonymity', {})
+      results = eval.compute(real, synthetic)
+      evaluation_result.extend(results)
 
     return evaluation_result
 
